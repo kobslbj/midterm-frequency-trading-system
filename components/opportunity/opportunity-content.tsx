@@ -6,11 +6,18 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { useOpportunitySSE } from "@/lib/hooks/use-opportunity-sse";
 import { OpportunityStatsHeader } from "./opportunity-stats";
 import { OpportunityTable } from "./opportunity-table";
 import { FundingRatesTable } from "./funding-rates-table";
+import { OpportunitySpreadModal } from "./opportunity-spread-modal";
 import type { Exchange, OpportunityStats } from "@/lib/types/opportunity";
 import { getExchangePairsFromSelections, ALL_EXCHANGES } from "@/lib/types/opportunity";
 import { cn } from "@/lib/utils";
@@ -20,6 +27,7 @@ export function OpportunityContent() {
   const [activeTab, setActiveTab] = useState<'opportunities' | 'funding-rates'>('opportunities');
   const [costBpsInput, setCostBpsInput] = useState<string>("20"); // String for input
   const costBps = parseInt(costBpsInput) || 0; // Parse for calculations
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
   const {
     opportunities,
@@ -151,7 +159,10 @@ export function OpportunityContent() {
         </div>
 
         <TabsContent value="opportunities" className="mt-4">
-          <OpportunityTable opportunities={filteredOpportunities} />
+          <OpportunityTable
+            opportunities={filteredOpportunities}
+            onSymbolClick={(symbol) => setSelectedSymbol(symbol)}
+          />
         </TabsContent>
 
         <TabsContent value="funding-rates" className="mt-4">
@@ -161,6 +172,18 @@ export function OpportunityContent() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Spread Chart Modal */}
+      <Dialog open={selectedSymbol !== null} onOpenChange={(open) => !open && setSelectedSymbol(null)}>
+        <DialogContent className="!max-w-[95vw] w-[95vw] max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>{selectedSymbol} - Binance vs Bybit</DialogTitle>
+          </DialogHeader>
+          <div className="h-[75vh]">
+            <OpportunitySpreadModal symbol={selectedSymbol} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
