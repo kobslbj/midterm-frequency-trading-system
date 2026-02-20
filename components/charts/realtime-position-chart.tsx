@@ -123,21 +123,21 @@ export function RealtimePositionChart({ data, lastInsertTime }: RealtimePosition
   return (
     <Card>
       <CardHeader className="flex flex-col items-stretch border-b p-0 sm:flex-row">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-4 py-3 sm:px-6 sm:py-6">
+        <div className="flex flex-1 flex-col justify-center gap-1 px-4 py-3 sm:px-6 sm:py-5">
           <CardTitle className="text-base sm:text-lg">Realtime Positions</CardTitle>
-          <CardDescription className="text-xs sm:text-sm">Current open positions ({latestPositions.length})</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">Open positions ({latestPositions.length})</CardDescription>
         </div>
         <div className="flex">
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-3 py-2 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-6">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-3 py-2 text-left sm:border-t-0 sm:border-l sm:px-6 sm:py-5">
             <span className="text-xs text-muted-foreground">Total Notional</span>
-            <span className="text-sm font-bold leading-none sm:text-2xl">
+            <span className="text-base font-bold leading-none sm:text-2xl">
               {formatCurrency(totalNotional, 0)}
             </span>
           </div>
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-3 py-2 text-left sm:border-t-0 sm:px-8 sm:py-6">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-3 py-2 text-left sm:border-t-0 sm:px-6 sm:py-5">
             <span className="text-xs text-muted-foreground">Unrealized P&L</span>
             <span className={cn(
-              "text-sm font-bold leading-none sm:text-2xl",
+              "text-base font-bold leading-none sm:text-2xl",
               getPnLColor(totalUnrealizedPnl)
             )}>
               {formatCurrency(totalUnrealizedPnl)}
@@ -151,8 +151,8 @@ export function RealtimePositionChart({ data, lastInsertTime }: RealtimePosition
             No open positions
           </div>
         ) : (
-          <div className="max-h-[200px] sm:max-h-[250px] overflow-y-auto">
-            <Table>
+          <div className="max-h-[200px] sm:max-h-[250px] overflow-auto">
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Symbol</TableHead>

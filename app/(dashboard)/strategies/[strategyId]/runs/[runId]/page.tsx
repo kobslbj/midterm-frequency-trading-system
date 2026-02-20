@@ -162,7 +162,7 @@ export default async function RunDetailsPage({ params, searchParams }: RunDetail
   const enableHedge = runParams?.strategy?.enable_hedge ?? false;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 sm:space-y-6">
       <RunDetailsHeader strategy={strategy} run={run} />
 
       <RunDetailsContent

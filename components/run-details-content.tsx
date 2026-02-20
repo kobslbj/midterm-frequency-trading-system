@@ -568,10 +568,10 @@ export function RunDetailsContent({
 
       {/* Combined Trades Table */}
       <Card>
-        <CardHeader className="px-4 sm:px-6">
-          <CardTitle className="text-lg sm:text-xl">Historical Positions ({filteredCombinedTrades.length})</CardTitle>
+        <CardHeader className="px-3 sm:px-6 py-3 sm:py-4">
+          <CardTitle className="text-base sm:text-lg font-medium">Historical Positions ({filteredCombinedTrades.length})</CardTitle>
         </CardHeader>
-        <CardContent className="px-2 sm:px-6">
+        <CardContent className="px-0 sm:px-6">
           <div className="max-h-[500px] sm:max-h-[880px] overflow-auto relative [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10 [&_thead]:bg-background">
             <CombinedTradesTable
               combinedTrades={filteredCombinedTrades}

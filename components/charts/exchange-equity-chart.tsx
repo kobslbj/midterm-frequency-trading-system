@@ -51,20 +51,20 @@ export function ExchangeEquityChart({ data }: ExchangeEquityChartProps) {
   return (
     <Card>
       <CardHeader className="flex flex-col items-stretch border-b p-0 sm:flex-row">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
-          <CardTitle>Exchange Equity</CardTitle>
-          <CardDescription>Individual exchange equity over time</CardDescription>
+        <div className="flex flex-1 flex-col justify-center gap-1 px-4 py-3 sm:px-6 sm:py-5">
+          <CardTitle className="text-base sm:text-lg">Exchange Equity</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Equity by exchange</CardDescription>
         </div>
         <div className="flex">
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-6">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-3 py-2 text-left sm:border-t-0 sm:border-l sm:px-6 sm:py-5">
             <span className="text-xs text-muted-foreground">Binance</span>
-            <span className="text-lg font-bold leading-none sm:text-2xl text-yellow-500">
+            <span className="text-base font-bold leading-none sm:text-2xl text-yellow-500">
               ${latestBinance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-6 py-4 text-left sm:border-t-0 sm:px-8 sm:py-6">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-3 py-2 text-left sm:border-t-0 sm:px-6 sm:py-5">
             <span className="text-xs text-muted-foreground">Bybit</span>
-            <span className="text-lg font-bold leading-none sm:text-2xl text-orange-500">
+            <span className="text-base font-bold leading-none sm:text-2xl text-orange-500">
               ${latestBybit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>

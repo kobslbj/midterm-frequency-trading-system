@@ -37,12 +37,12 @@ export function CumulativeTradePnLChart({ data }: CumulativeTradePnLChartProps) 
   return (
     <Card>
       <CardHeader className="flex flex-col items-stretch border-b p-0 sm:flex-row">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
-          <CardTitle>Cumulative Trade PnL</CardTitle>
-          <CardDescription>Accumulated profit/loss over time</CardDescription>
+        <div className="flex flex-1 flex-col justify-center gap-1 px-4 py-3 sm:px-6 sm:py-5">
+          <CardTitle className="text-base sm:text-lg">Cumulative Trade PnL</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Accumulated profit/loss over time</CardDescription>
         </div>
         <div className="flex">
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-6">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-3 py-2 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-5">
             <span className="text-xs text-muted-foreground">Final PnL</span>
             <span
               className={`text-lg font-bold leading-none sm:text-3xl ${

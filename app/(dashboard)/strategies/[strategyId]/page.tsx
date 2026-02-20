@@ -1,21 +1,24 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, TrendingUp, BarChart3, ArrowRight } from "lucide-react";
+import { ArrowLeft, BarChart3, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { StrategyRunsTable } from "@/components/strategies/strategy-runs-table";
 import type { Strategy, StrategyRun } from "@/lib/types/database";
 
-// Disable caching to ensure fresh data on every page load
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 interface StrategyDetailPageProps {
-  params: Promise<{
-    strategyId: string;
-  }>;
+  params: Promise<{ strategyId: string }>;
 }
 
 export default async function StrategyDetailPage({
@@ -25,7 +28,6 @@ export default async function StrategyDetailPage({
   const { strategyId } = await params;
   const supabase = await createClient();
 
-  // Fetch strategy and runs in parallel
   const [strategyResult, runsResult] = await Promise.all([
     supabase
       .from("strategies")
@@ -47,29 +49,32 @@ export default async function StrategyDetailPage({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-start gap-6 pb-6 border-b">
+      <div className="flex items-start gap-3 sm:gap-4 pb-4 border-b">
         <Link href="/strategies">
-          <Button variant="ghost" size="icon" className="mt-1">
-            <ArrowLeft className="h-5 w-5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mt-0.5 h-8 w-8 shrink-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <div className="flex-1">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3">
-                <TrendingUp className="h-8 w-8" />
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight truncate">
                 {strategy.name}
               </h1>
               {strategy.description && (
-                <p className="text-lg text-muted-foreground">
+                <p className="text-sm text-muted-foreground mt-1">
                   {strategy.description}
                 </p>
               )}
             </div>
-            <span className="text-sm text-muted-foreground">
-              Version {strategy.version}
+            <span className="text-xs font-mono text-muted-foreground shrink-0">
+              v{strategy.version}
             </span>
           </div>
         </div>
@@ -78,39 +83,47 @@ export default async function StrategyDetailPage({
       {/* Combined View Card */}
       {runs.length > 0 && (
         <Link href={`/strategies/${strategyId}/combined`}>
-          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <BarChart3 className="h-5 w-5 text-primary" />
+          <Card className="transition-colors hover:bg-accent/50 active:bg-accent/50">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <BarChart3 className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <CardTitle className="text-sm sm:text-base">
+                      Combined Performance
+                    </CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">
+                      {runs.length} runs combined with gap filling
+                    </CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle className="text-lg">Combined Performance</CardTitle>
-                  <CardDescription>
-                    View all {runs.length} runs combined with gap filling
-                  </CardDescription>
-                </div>
+                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
               </div>
-              <ArrowRight className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-6 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Total Runs: </span>
-                  <span className="font-medium">{runs.length}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Total Capital: </span>
-                  <span className="font-medium">
-                    ${runs.reduce((sum, r) => sum + (r.initial_capital || 0), 0).toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Active Runs: </span>
-                  <span className="font-medium">
+
+              <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-sm text-muted-foreground">
+                <span>
+                  <span className="text-foreground font-mono font-medium">
+                    {runs.length}
+                  </span>{" "}
+                  runs
+                </span>
+                <span>
+                  <span className="text-foreground font-mono font-medium">
+                    $
+                    {runs
+                      .reduce((sum, r) => sum + (r.initial_capital || 0), 0)
+                      .toLocaleString()}
+                  </span>{" "}
+                  capital
+                </span>
+                <span>
+                  <span className="text-foreground font-mono font-medium">
                     {runs.filter((r) => r.status === "running").length}
-                  </span>
-                </div>
+                  </span>{" "}
+                  active
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -119,11 +132,15 @@ export default async function StrategyDetailPage({
 
       {/* Runs Section */}
       <Card>
-        <CardHeader>
-          <CardTitle>Strategy Runs</CardTitle>
+        <CardHeader className="px-3 sm:px-6">
+          <CardTitle className="text-sm sm:text-base font-medium">
+            Strategy Runs
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <StrategyRunsTable runs={runs} strategyId={strategyId} />
+        <CardContent className="px-0 sm:px-6">
+          <div className="overflow-x-auto">
+            <StrategyRunsTable runs={runs} strategyId={strategyId} />
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -148,7 +148,7 @@ export function TimeRangeSelector({
       </div>
 
       <div className="sm:ml-auto flex items-center gap-2">
-        <div className="rounded-md bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground sm:px-3 sm:py-1.5 sm:text-xs overflow-x-auto whitespace-nowrap">
+        <div className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground sm:px-3 sm:py-1.5 overflow-x-auto whitespace-nowrap">
           {formatDateTime(displayRange.start)} - {formatDateTime(displayRange.end)}
         </div>
       </div>

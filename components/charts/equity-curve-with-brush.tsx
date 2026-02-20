@@ -97,8 +97,8 @@ export function EquityCurveWithBrush({
   return (
     <Card>
       <CardHeader className="flex flex-col items-stretch border-b p-0 sm:flex-row">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
-          <CardTitle className="flex items-center gap-2">
+        <div className="flex flex-1 flex-col justify-center gap-1 px-4 py-3 sm:px-6 sm:py-5">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             Equity Curve
             <Button
               variant="ghost"
@@ -110,12 +110,12 @@ export function EquityCurveWithBrush({
               <RotateCcw className="h-3.5 w-3.5" />
             </Button>
           </CardTitle>
-          <CardDescription>Drag on chart to zoom • Click reset to restore</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">Drag on chart to zoom</CardDescription>
         </div>
         <div className="flex">
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-3 py-3 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-6">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-3 py-2 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-5">
             <span className="text-xs text-muted-foreground">Current Equity</span>
-            <span className="text-base font-bold leading-none sm:text-3xl text-emerald-600 dark:text-emerald-400">
+            <span className="text-base font-bold leading-none sm:text-2xl text-emerald-600 dark:text-emerald-400">
               ${currentEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>

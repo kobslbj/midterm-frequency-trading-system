@@ -68,32 +68,32 @@ export function PnLBreakdownChart({ data }: PnLBreakdownChartProps) {
   return (
     <Card>
       <CardHeader className="flex flex-col items-stretch border-b p-0 sm:flex-row">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
-          <CardTitle>PnL Breakdown</CardTitle>
-          <CardDescription>Funding, Price Convergence & Total PnL</CardDescription>
+        <div className="flex flex-1 flex-col justify-center gap-1 px-4 py-3 sm:px-6 sm:py-5">
+          <CardTitle className="text-base sm:text-lg">PnL Breakdown</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Funding, Price & Total PnL</CardDescription>
         </div>
         <div className="flex">
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-4 py-4 text-left sm:border-t-0 sm:border-l sm:px-6 sm:py-6">
-            <span className="text-xs text-muted-foreground">Funding</span>
-            <span className={`text-sm font-bold leading-none sm:text-lg ${latestFunding >= 0 ? "text-blue-500" : "text-red-500"}`}>
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-2 py-2 text-left sm:border-t-0 sm:border-l sm:px-5 sm:py-5">
+            <span className="text-[10px] sm:text-xs text-muted-foreground">Funding</span>
+            <span className={`text-xs font-bold leading-none sm:text-lg ${latestFunding >= 0 ? "text-blue-500" : "text-red-500"}`}>
               {formatValue(latestFunding)}
             </span>
           </div>
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-4 py-4 text-left sm:border-t-0 sm:px-6 sm:py-6">
-            <span className="text-xs text-muted-foreground">Price</span>
-            <span className={`text-sm font-bold leading-none sm:text-lg ${latestPrice >= 0 ? "text-purple-500" : "text-red-500"}`}>
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-2 py-2 text-left sm:border-t-0 sm:px-5 sm:py-5">
+            <span className="text-[10px] sm:text-xs text-muted-foreground">Price</span>
+            <span className={`text-xs font-bold leading-none sm:text-lg ${latestPrice >= 0 ? "text-purple-500" : "text-red-500"}`}>
               {formatValue(latestPrice)}
             </span>
           </div>
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-4 py-4 text-left sm:border-t-0 sm:px-6 sm:py-6">
-            <span className="text-xs text-muted-foreground">Fee</span>
-            <span className="text-sm font-bold leading-none sm:text-lg text-orange-500">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-2 py-2 text-left sm:border-t-0 sm:px-5 sm:py-5">
+            <span className="text-[10px] sm:text-xs text-muted-foreground">Fee</span>
+            <span className="text-xs font-bold leading-none sm:text-lg text-orange-500">
               {formatValue(latestFee)}
             </span>
           </div>
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-4 py-4 text-left sm:border-t-0 sm:px-6 sm:py-6">
-            <span className="text-xs text-muted-foreground">Total</span>
-            <span className={`text-sm font-bold leading-none sm:text-lg ${latestTotal >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t border-l px-2 py-2 text-left sm:border-t-0 sm:px-5 sm:py-5">
+            <span className="text-[10px] sm:text-xs text-muted-foreground">Total</span>
+            <span className={`text-xs font-bold leading-none sm:text-lg ${latestTotal >= 0 ? "text-emerald-500" : "text-red-500"}`}>
               {formatValue(latestTotal)}
             </span>
           </div>

@@ -282,17 +282,17 @@ async function MetricsStrip({
         <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
           {/* Total Equity */}
           <div className="p-3 sm:p-4 lg:p-5 bg-card">
-            <p className="text-[10px] sm:text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Total Equity
             </p>
-            <p className="text-base sm:text-xl lg:text-2xl font-bold font-mono tabular-nums mt-1">
+            <p className="text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1">
               $
               {totalEquity.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5 sm:mt-1">
+            <p className="text-xs text-muted-foreground mt-0.5 sm:mt-1">
               {lastEquityPerStrategy.size}{" "}
               {lastEquityPerStrategy.size === 1 ? "strategy" : "strategies"}
             </p>
@@ -300,12 +300,12 @@ async function MetricsStrip({
 
           {/* 24h P&L */}
           <div className="p-3 sm:p-4 lg:p-5 bg-card">
-            <p className="text-[10px] sm:text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               24h P&L
             </p>
             <p
               className={cn(
-                "text-base sm:text-xl lg:text-2xl font-bold font-mono tabular-nums mt-1",
+                "text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1",
                 hasEquityData
                   ? pnl24h > 0
                     ? "text-emerald-500"
@@ -329,7 +329,7 @@ async function MetricsStrip({
             </p>
             <p
               className={cn(
-                "text-[10px] sm:text-[11px] font-mono mt-0.5 sm:mt-1",
+                "text-xs font-mono mt-0.5 sm:mt-1",
                 hasEquityData
                   ? pnl24h > 0
                     ? "text-emerald-500/70"
@@ -347,26 +347,26 @@ async function MetricsStrip({
 
           {/* Active Strategies */}
           <div className="p-3 sm:p-4 lg:p-5 bg-card">
-            <p className="text-[10px] sm:text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Active Strategies
             </p>
-            <p className="text-base sm:text-xl lg:text-2xl font-bold font-mono tabular-nums mt-1">
+            <p className="text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1">
               {activeStrategiesCount}
             </p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5 sm:mt-1">
+            <p className="text-xs text-muted-foreground mt-0.5 sm:mt-1">
               of {allStrategies.length} total
             </p>
           </div>
 
           {/* Today's Trades */}
           <div className="p-3 sm:p-4 lg:p-5 bg-card">
-            <p className="text-[10px] sm:text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Today&apos;s Trades
             </p>
-            <p className="text-base sm:text-xl lg:text-2xl font-bold font-mono tabular-nums mt-1">
+            <p className="text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1">
               {todayTradeCount}
             </p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5 sm:mt-1">
+            <p className="text-xs text-muted-foreground mt-0.5 sm:mt-1">
               {new Date().toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
@@ -446,8 +446,8 @@ async function PerformanceStatsSection({
         <div key={run.runId} className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <h3 className="text-sm font-semibold">{run.strategyName}</h3>
-            <span className="text-[11px] font-mono text-muted-foreground uppercase">
+            <h3 className="text-sm sm:text-base font-semibold">{run.strategyName}</h3>
+            <span className="text-xs font-mono text-muted-foreground uppercase">
               {run.mode}
             </span>
           </div>
@@ -506,7 +506,7 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Overview</h2>
         {runningRunIds.length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
             <span className="font-mono uppercase tracking-wider">Live</span>
           </div>
@@ -526,8 +526,8 @@ export default async function DashboardPage() {
       <Card>
         <CardHeader className="px-3 sm:px-6 pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xs sm:text-sm font-medium">Equity Curve</CardTitle>
-            <span className="text-[11px] text-muted-foreground font-mono">
+            <CardTitle className="text-sm sm:text-base font-medium">Equity Curve</CardTitle>
+            <span className="text-xs text-muted-foreground font-mono">
               24H
             </span>
           </div>
@@ -546,12 +546,12 @@ export default async function DashboardPage() {
       {runningRuns.length > 0 ? (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Active Strategies
             </h3>
             <Link
               href="/strategies"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               View all &rarr;
             </Link>
@@ -566,14 +566,14 @@ export default async function DashboardPage() {
                   <CardContent className="p-3 sm:p-4">
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.4)]" />
-                      <span className="font-medium text-sm truncate flex-1">
+                      <span className="font-medium text-sm sm:text-base truncate flex-1">
                         {run.strategyName}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono uppercase">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono uppercase">
                         {run.mode}
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground font-mono mt-2">
+                    <p className="text-xs text-muted-foreground font-mono mt-2">
                       Started{" "}
                       {new Date(run.startTime).toLocaleString("en-US", {
                         month: "short",
@@ -600,7 +600,7 @@ export default async function DashboardPage() {
       {/* Performance Stats */}
       {runningRuns.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
             Strategy Metrics
             <span className="ml-2 text-muted-foreground/60">(7d)</span>
           </h3>

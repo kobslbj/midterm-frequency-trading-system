@@ -284,77 +284,73 @@ export function AllPositionsContent({
   }, [activePositions]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">持倉查看</h2>
-        <p className="text-muted-foreground" suppressHydrationWarning>
-          查看所有運行中策略的持倉 • 最後更新: {lastUpdateTime.toLocaleTimeString()}
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Positions</h2>
+        <p className="text-sm text-muted-foreground" suppressHydrationWarning>
+          All running strategy positions • Updated {lastUpdateTime.toLocaleTimeString()}
         </p>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">總持倉價值</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+      {/* Summary Strip */}
+      <Card className="overflow-hidden">
+        <div className="grid grid-cols-3 gap-px bg-border">
+          <div className="bg-card p-3 sm:p-4 lg:p-5">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
+              Notional Value
+            </p>
+            <p className="text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1">
               ${formatCurrency(totalNotionalValue)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">未實現盈虧</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={cn("text-2xl font-bold", getPnlColor(totalUnrealizedPnl))}>
+            </p>
+          </div>
+          <div className="bg-card p-3 sm:p-4 lg:p-5">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
+              Unrealized P&L
+            </p>
+            <p className={cn("text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1", getPnlColor(totalUnrealizedPnl))}>
               {totalUnrealizedPnl >= 0 ? "+" : ""}${formatCurrency(totalUnrealizedPnl)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">持倉數量</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{positionCount}</div>
-          </CardContent>
-        </Card>
-      </div>
+            </p>
+          </div>
+          <div className="bg-card p-3 sm:p-4 lg:p-5">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
+              Open Positions
+            </p>
+            <p className="text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1">
+              {positionCount}
+            </p>
+          </div>
+        </div>
+      </Card>
 
       {/* Positions Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>持倉列表</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            點擊交易對查看兩間交易所的價差走勢
+        <CardHeader className="px-3 sm:px-6 py-3 sm:py-4">
+          <CardTitle className="text-sm sm:text-base font-medium">Position List</CardTitle>
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Click a symbol to view cross-exchange spread chart
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-0 sm:px-6">
           {activePositions.length === 0 ? (
-            <div className="flex h-[200px] items-center justify-center text-muted-foreground">
-              目前無持倉
+            <div className="flex h-[140px] sm:h-[200px] items-center justify-center text-sm text-muted-foreground">
+              No open positions
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[800px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>策略</TableHead>
-                    <TableHead>交易對</TableHead>
-                    <TableHead>交易所</TableHead>
-                    <TableHead className="text-right">方向</TableHead>
-                    <TableHead className="text-right">數量</TableHead>
-                    <TableHead className="text-right">均價</TableHead>
-                    <TableHead className="text-right">標記價</TableHead>
-                    <TableHead className="text-right">名義價值</TableHead>
-                    <TableHead className="text-right">未實現盈虧</TableHead>
-                    <TableHead className="text-right">槓桿</TableHead>
-                    <TableHead className="text-right">強平價</TableHead>
+                    <TableHead>Strategy</TableHead>
+                    <TableHead>Symbol</TableHead>
+                    <TableHead>Exchange</TableHead>
+                    <TableHead className="text-right">Side</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">Qty</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">Avg Price</TableHead>
+                    <TableHead className="text-right">Mark Price</TableHead>
+                    <TableHead className="text-right">Notional</TableHead>
+                    <TableHead className="text-right">Unrealized P&L</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">Lev</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">Liq Price</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -362,24 +358,24 @@ export function AllPositionsContent({
                     strategyPositions.map((pos, idx) => (
                       <TableRow key={`${pos.run_id}-${pos.symbol}-${pos.exchange}`}>
                         {idx === 0 ? (
-                          <TableCell rowSpan={strategyPositions.length} className="align-top border-r">
+                          <TableCell rowSpan={strategyPositions.length} className="align-top border-r py-2.5">
                             <Link
                               href={`/strategies/${pos.strategy_id}`}
-                              className="hover:underline font-medium text-primary"
+                              className="hover:underline font-medium text-primary text-sm"
                             >
                               {strategyName}
                             </Link>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {strategyPositions.length} 持倉
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {strategyPositions.length} positions
                             </div>
                           </TableCell>
                         ) : null}
-                        <TableCell>
+                        <TableCell className="py-2.5">
                           <Button
                             variant="ghost"
                             size="sm"
                             className={cn(
-                              "font-medium px-2 h-7",
+                              "font-medium text-sm px-2 h-7",
                               selectedSymbol === pos.symbol && "bg-primary/10 text-primary"
                             )}
                             onClick={() => handleSymbolClick(pos.symbol)}
@@ -387,35 +383,35 @@ export function AllPositionsContent({
                             {pos.symbol}
                           </Button>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={getExchangeColor(pos.exchange)}>
+                        <TableCell className="py-2.5">
+                          <Badge variant="outline" className={cn("text-xs px-1.5 py-0", getExchangeColor(pos.exchange))}>
                             {pos.exchange}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="outline" className={getPositionSideColor(pos.position)}>
+                        <TableCell className="text-right py-2.5">
+                          <Badge variant="outline" className={cn("text-xs px-1.5 py-0", getPositionSideColor(pos.position))}>
                             {pos.position > 0 ? "LONG" : pos.position < 0 ? "SHORT" : "FLAT"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono text-sm py-2.5 hidden sm:table-cell">
                           {formatNumber(Math.abs(pos.position), 4)}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono text-sm py-2.5 hidden md:table-cell">
                           ${formatNumber(pos.avg_price, 4)}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono text-sm py-2.5">
                           ${formatNumber(pos.mark_price, 4)}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono text-sm py-2.5">
                           ${formatCurrency(Math.abs(pos.notional_value))}
                         </TableCell>
-                        <TableCell className={cn("text-right font-mono", getPnlColor(pos.unrealized_pnl))}>
+                        <TableCell className={cn("text-right font-mono text-sm py-2.5", getPnlColor(pos.unrealized_pnl))}>
                           {pos.unrealized_pnl >= 0 ? "+" : ""}${formatCurrency(pos.unrealized_pnl)}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono text-sm py-2.5 hidden sm:table-cell">
                           {pos.leverage}x
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono text-sm py-2.5 hidden md:table-cell">
                           ${formatNumber(pos.liq_price, 4)}
                         </TableCell>
                       </TableRow>
