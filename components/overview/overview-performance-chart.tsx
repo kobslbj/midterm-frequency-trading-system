@@ -182,7 +182,7 @@ export function OverviewPerformanceChart({
 
   if (chartData.length === 0) {
     return (
-      <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+      <div className="flex h-[220px] sm:h-[300px] items-center justify-center text-sm text-muted-foreground">
         No equity data available
       </div>
     );
@@ -199,12 +199,12 @@ export function OverviewPerformanceChart({
   return (
     <ChartContainer
       config={chartConfig}
-      className="aspect-auto h-[300px] w-full"
+      className="aspect-auto h-[220px] sm:h-[300px] w-full"
     >
       <AreaChart
         accessibilityLayer
         data={chartData}
-        margin={{ left: 12, right: 12 }}
+        margin={{ left: 4, right: 4 }}
       >
         <defs>
           <linearGradient id="fillEquityOverview" x1="0" y1="0" x2="0" y2="1">
@@ -228,13 +228,11 @@ export function OverviewPerformanceChart({
           domain={["dataMin", "dataMax"]}
           tickLine={false}
           axisLine={false}
-          tickMargin={8}
-          minTickGap={48}
+          tickMargin={6}
+          minTickGap={60}
           tickFormatter={(value) => {
             const date = new Date(value);
             return date.toLocaleString("en-US", {
-              month: "short",
-              day: "numeric",
               hour: "2-digit",
               minute: "2-digit",
               hour12: false,
@@ -244,16 +242,25 @@ export function OverviewPerformanceChart({
         <YAxis
           tickLine={false}
           axisLine={false}
-          tickMargin={8}
+          tickMargin={4}
+          width={52}
           domain={[yMin, yMax]}
-          tickFormatter={(value) => `$${Number(value).toLocaleString()}`}
+          tickFormatter={(value) => {
+            const num = Number(value);
+            if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
+            if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`;
+            return `$${num.toLocaleString()}`;
+          }}
         />
         <ChartTooltip
           content={
             <ChartTooltipContent
               className="w-[180px]"
-              labelFormatter={(value) => {
-                const date = new Date(value);
+              labelFormatter={(_value, payload) => {
+                // Access time from the payload data directly
+                const time = payload?.[0]?.payload?.time;
+                if (!time) return "Invalid Date";
+                const date = new Date(time);
                 return date.toLocaleString("en-US", {
                   month: "short",
                   day: "numeric",
