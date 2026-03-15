@@ -107,10 +107,20 @@ async function fetchKlines(exchange: Exchange, symbol: string): Promise<[number,
 
 async function fetchFundingHistory(symbol: string, exchangeA: Exchange, exchangeB: Exchange): Promise<{ exchangeA: FundingRateEntry[]; exchangeB: FundingRateEntry[] }> {
   try {
-    const res = await fetch(`/api/funding-history?symbol=${encodeURIComponent(symbol)}&exchangeA=${encodeURIComponent(exchangeA)}&exchangeB=${encodeURIComponent(exchangeB)}`);
-    if (!res.ok) return { exchangeA: [], exchangeB: [] };
-    return await res.json();
-  } catch {
+    const url = `/api/funding-history?symbol=${encodeURIComponent(symbol)}&exchangeA=${encodeURIComponent(exchangeA)}&exchangeB=${encodeURIComponent(exchangeB)}`;
+    console.log("[funding-history] fetching:", url);
+    const res = await fetch(url);
+    console.log("[funding-history] status:", res.status);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[funding-history] error response:", text);
+      return { exchangeA: [], exchangeB: [] };
+    }
+    const data = await res.json();
+    console.log("[funding-history] result:", { a: data.exchangeA?.length, b: data.exchangeB?.length });
+    return data;
+  } catch (e) {
+    console.error("[funding-history] fetch failed:", e);
     return { exchangeA: [], exchangeB: [] };
   }
 }

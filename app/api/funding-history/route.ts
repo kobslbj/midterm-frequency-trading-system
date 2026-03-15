@@ -12,7 +12,7 @@ const FETCH_TIMEOUT_MS = 5000;
 function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+  return fetch(url, { signal: controller.signal, cache: "no-store" }).finally(() => clearTimeout(timer));
 }
 
 function formatExchangeSymbol(symbol: string, exchange: Exchange): string {
