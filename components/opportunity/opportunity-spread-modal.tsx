@@ -268,13 +268,11 @@ export function OpportunitySpreadModal({ symbol, exchangeA, exchangeB }: Opportu
 
     const fetchData = async () => {
       setIsLoading(true);
-      const [klinesA, klinesB, fundingHistory] = await Promise.all([
+      const [klinesA, klinesB] = await Promise.all([
         fetchKlines(exchangeA, symbol),
         fetchKlines(exchangeB, symbol),
-        fetchFundingHistory(symbol, exchangeA, exchangeB),
       ]);
       if (cancelled) return;
-      setFundingRates(fundingHistory);
       const mergedData = mergeKlinesAndCalculateSpread(klinesA, klinesB);
       setData(mergedData);
 
@@ -288,6 +286,12 @@ export function OpportunitySpreadModal({ symbol, exchangeA, exchangeB }: Opportu
     };
 
     fetchData();
+
+    // Fetch funding history independently (non-blocking)
+    fetchFundingHistory(symbol, exchangeA, exchangeB).then((history) => {
+      if (!cancelled) setFundingRates(history);
+    });
+
     return () => { cancelled = true; };
   }, [symbol, exchangeA, exchangeB]);
 
