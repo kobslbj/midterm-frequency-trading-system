@@ -13,11 +13,12 @@ import {
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import type { Exchange } from "@/lib/types/opportunity";
 
 interface DataPoint {
   time: number;
-  binancePrice: number;
-  bybitPrice: number;
+  exchangeAPrice: number;
+  exchangeBPrice: number;
   spread: number;
   spreadPercent: number;
   ma?: number;
@@ -30,9 +31,44 @@ interface DataPoint {
   lower3?: number;
 }
 
+interface FundingRateEntry {
+  timestamp: number;
+  rate: number;
+  exchange: Exchange;
+}
+
 interface OpportunitySpreadModalProps {
   symbol: string | null;
+  exchangeA: Exchange;
+  exchangeB: Exchange;
 }
+
+// ── Constants ──────────────────────────────────────────────
+
+const DISPLAY_KLINES = 1440;
+const MA_WINDOW = 1440;
+
+const EXCHANGE_COLORS: Record<Exchange, string> = {
+  Binance: "#eab308",
+  Bybit: "#06b6d4",
+  BingX: "#22c55e",
+  Gate: "#3b82f6",
+  Bitget: "#a855f7",
+  Zoomex: "#f97316",
+  BitMart: "#ec4899",
+};
+
+const EXCHANGE_TEXT_CLASSES: Record<Exchange, string> = {
+  Binance: "text-yellow-500",
+  Bybit: "text-cyan-500",
+  BingX: "text-green-500",
+  Gate: "text-blue-500",
+  Bitget: "text-purple-500",
+  Zoomex: "text-orange-500",
+  BitMart: "text-pink-500",
+};
+
+// ── Helpers ────────────────────────────────────────────────
 
 function formatPrice(price: number): string {
   if (price >= 1000) return price.toFixed(2);
@@ -41,133 +77,142 @@ function formatPrice(price: number): string {
   return price.toFixed(8);
 }
 
-// Custom tooltip for spread chart
-function SpreadTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string }>; label?: number }) {
-  if (!active || !payload || !payload.length) return null;
-
-  const date = new Date(label || 0);
-  const spreadData = payload.find((p) => p.dataKey === "spread");
-  const maData = payload.find((p) => p.dataKey === "ma");
-  const spread = spreadData?.value ?? 0;
-  const ma = maData?.value;
-
-  return (
-    <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
-      <div className="text-muted-foreground mb-2">
-        {date.toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-      </div>
-      <div className={cn("font-bold", spread > 0 ? "text-emerald-600" : "text-red-600")}>
-        Spread: {spread.toFixed(2)} bp
-      </div>
-      {ma !== undefined && <div className="text-amber-500 mt-1">MA: {ma.toFixed(2)} bp</div>}
-    </div>
-  );
-}
-
-// Custom tooltip for price chart
-function PriceTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string }>; label?: number }) {
-  if (!active || !payload || !payload.length) return null;
-
-  const date = new Date(label || 0);
-  const binanceData = payload.find((p) => p.dataKey === "binancePrice");
-  const bybitData = payload.find((p) => p.dataKey === "bybitPrice");
-
-  return (
-    <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
-      <div className="text-muted-foreground mb-2">
-        {date.toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-      </div>
-      {binanceData && <div className="text-yellow-500">Binance: ${formatPrice(binanceData.value)}</div>}
-      {bybitData && <div className="text-cyan-500">Bybit: ${formatPrice(bybitData.value)}</div>}
-    </div>
-  );
-}
-
 function normalizeSymbol(symbol: string): string {
   return symbol.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-const DISPLAY_KLINES = 1440;
-const FETCH_KLINES = 2880;
-const MA_WINDOW = 1440;
+function formatExchangeSymbol(symbol: string, exchange: Exchange): string {
+  const base = symbol.replace(/USDT$/i, "");
+  switch (exchange) {
+    case "BingX":
+      return `${base}-USDT`;
+    case "Gate":
+      return `${base}_USDT`;
+    default:
+      return symbol.toUpperCase();
+  }
+}
 
-async function fetchBinanceKlines(symbol: string): Promise<[number, number][]> {
+// ── Kline Fetcher (via server-side API proxy to avoid CORS) ──
+
+async function fetchKlines(exchange: Exchange, symbol: string): Promise<[number, number][]> {
   try {
-    const allKlines: [number, number][] = [];
-    let oldestTime = Date.now();
-
-    for (let i = 0; i < 2 && allKlines.length < FETCH_KLINES; i++) {
-      const url = i === 0
-        ? `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=1500`
-        : `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=1500&endTime=${oldestTime - 1}`;
-
-      const response = await fetch(url);
-      if (!response.ok) break;
-      const data = await response.json();
-      const klines: [number, number][] = data.map((k: (string | number)[]) => [Number(k[0]), parseFloat(k[4] as string)]);
-
-      if (klines.length === 0) break;
-      allKlines.unshift(...klines);
-      oldestTime = klines[0][0];
-      if (klines.length < 1500) break;
-    }
-
-    return allKlines;
+    const res = await fetch(`/api/klines?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`);
+    if (!res.ok) return [];
+    return await res.json();
   } catch {
     return [];
   }
 }
 
-async function fetchBybitKlines(symbol: string): Promise<[number, number][]> {
+async function fetchFundingHistory(symbol: string, exchangeA: Exchange, exchangeB: Exchange): Promise<{ exchangeA: FundingRateEntry[]; exchangeB: FundingRateEntry[] }> {
   try {
-    const allKlines: [number, number][] = [];
-    let endTime = Date.now();
-
-    for (let i = 0; i < 3 && allKlines.length < FETCH_KLINES; i++) {
-      const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol.toUpperCase()}&interval=1&limit=1000&end=${endTime}`;
-      const response = await fetch(url);
-      if (!response.ok) break;
-      const data = await response.json();
-
-      if (data.retCode !== 0 || !data.result?.list?.length) break;
-
-      const klines: [number, number][] = data.result.list.map((k: string[]) => [parseInt(k[0]), parseFloat(k[4])]);
-      allKlines.push(...klines);
-
-      const oldestTime = Math.min(...klines.map((k) => k[0]));
-      endTime = oldestTime - 1;
-      if (klines.length < 1000) break;
-    }
-
-    return allKlines.sort((a, b) => a[0] - b[0]);
+    const res = await fetch(`/api/funding-history?symbol=${encodeURIComponent(symbol)}&exchangeA=${encodeURIComponent(exchangeA)}&exchangeB=${encodeURIComponent(exchangeB)}`);
+    if (!res.ok) return { exchangeA: [], exchangeB: [] };
+    return await res.json();
   } catch {
-    return [];
+    return { exchangeA: [], exchangeB: [] };
   }
 }
 
-function mergeKlinesAndCalculateSpread(binanceKlines: [number, number][], bybitKlines: [number, number][]): DataPoint[] {
-  const binanceMap = new Map(binanceKlines);
-  const bybitMap = new Map(bybitKlines);
-  const allTimestamps = new Set([...binanceKlines.map((k) => k[0]), ...bybitKlines.map((k) => k[0])]);
+// Custom label component for funding rate reference lines (supports multi-line)
+function FundingRateLabel({ viewBox, lines }: { viewBox?: { x?: number; y?: number }; lines: string[] }) {
+  const x = viewBox?.x ?? 0;
+  return (
+    <g>
+      {lines.map((line, i) => (
+        <text key={i} x={x + 3} y={14 + i * 12} fill="#ef4444" fontSize={9} textAnchor="start">
+          {line}
+        </text>
+      ))}
+    </g>
+  );
+}
+
+// ── WebSocket Connectors ───────────────────────────────────
+
+function connectExchangeWs(exchange: Exchange, symbol: string, onPrice: (price: number) => void): WebSocket | null {
+  switch (exchange) {
+    case "Binance": {
+      const ws = new WebSocket(`wss://fstream.binance.com/ws/${normalizeSymbol(symbol)}@kline_1m`);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.e === "kline" && msg.k) onPrice(parseFloat(msg.k.c));
+        } catch {}
+      };
+      return ws;
+    }
+    case "Bybit": {
+      const ws = new WebSocket("wss://stream.bybit.com/v5/public/linear");
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ op: "subscribe", args: [`kline.1.${symbol.toUpperCase()}`] }));
+      };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.topic?.startsWith("kline.") && msg.data?.[0]) onPrice(parseFloat(msg.data[0].close));
+        } catch {}
+      };
+      return ws;
+    }
+    case "Gate": {
+      const fmtSymbol = formatExchangeSymbol(symbol, "Gate");
+      const ws = new WebSocket("wss://fx-ws.gateio.ws/v4/ws/usdt");
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: "futures.candlesticks", event: "subscribe", payload: ["1m", fmtSymbol] }));
+      };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.channel === "futures.candlesticks" && msg.event === "update" && msg.result?.[0]) onPrice(parseFloat(msg.result[0].c));
+        } catch {}
+      };
+      return ws;
+    }
+    case "Bitget": {
+      const ws = new WebSocket("wss://ws.bitget.com/v2/ws/public");
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ op: "subscribe", args: [{ instType: "USDT-FUTURES", channel: "candle1m", instId: symbol.toUpperCase() }] }));
+      };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if ((msg.action === "snapshot" || msg.action === "update") && msg.data?.[0]?.[4]) onPrice(parseFloat(msg.data[0][4]));
+        } catch {}
+      };
+      return ws;
+    }
+    default:
+      return null;
+  }
+}
+
+// ── Merge & Calculate ──────────────────────────────────────
+
+function mergeKlinesAndCalculateSpread(klinesA: [number, number][], klinesB: [number, number][]): DataPoint[] {
+  const mapA = new Map(klinesA);
+  const mapB = new Map(klinesB);
+  const allTimestamps = new Set([...klinesA.map((k) => k[0]), ...klinesB.map((k) => k[0])]);
 
   const result: DataPoint[] = [];
-  let lastBinance = 0;
-  let lastBybit = 0;
+  let lastA = 0;
+  let lastB = 0;
   const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
 
   for (const ts of sortedTimestamps) {
-    const binancePrice = binanceMap.get(ts) ?? lastBinance;
-    const bybitPrice = bybitMap.get(ts) ?? lastBybit;
+    const priceA = mapA.get(ts) ?? lastA;
+    const priceB = mapB.get(ts) ?? lastB;
 
-    if (binancePrice > 0 && bybitPrice > 0) {
-      lastBinance = binancePrice;
-      lastBybit = bybitPrice;
+    if (priceA > 0 && priceB > 0) {
+      lastA = priceA;
+      lastB = priceB;
 
-      const spread = bybitPrice - binancePrice;
-      const spreadPercent = (spread / binancePrice) * 100;
+      const spread = priceB - priceA;
+      const spreadPercent = (spread / priceA) * 100;
       const spreadBps = spreadPercent * 100;
 
-      result.push({ time: ts, binancePrice, bybitPrice, spread: spreadBps, spreadPercent });
+      result.push({ time: ts, exchangeAPrice: priceA, exchangeBPrice: priceB, spread: spreadBps, spreadPercent });
     }
   }
 
@@ -175,16 +220,12 @@ function mergeKlinesAndCalculateSpread(binanceKlines: [number, number][], bybitK
   for (let i = 0; i < result.length; i++) {
     if (i >= MA_WINDOW - 1) {
       let sum = 0;
-      for (let j = i - MA_WINDOW + 1; j <= i; j++) {
-        sum += result[j].spread;
-      }
+      for (let j = i - MA_WINDOW + 1; j <= i; j++) sum += result[j].spread;
       const ma = sum / MA_WINDOW;
       result[i].ma = ma;
 
       let sumSquaredDiff = 0;
-      for (let j = i - MA_WINDOW + 1; j <= i; j++) {
-        sumSquaredDiff += Math.pow(result[j].spread - ma, 2);
-      }
+      for (let j = i - MA_WINDOW + 1; j <= i; j++) sumSquaredDiff += Math.pow(result[j].spread - ma, 2);
       const std = Math.sqrt(sumSquaredDiff / MA_WINDOW);
       result[i].std = std;
       result[i].upper1 = ma + std;
@@ -196,20 +237,25 @@ function mergeKlinesAndCalculateSpread(binanceKlines: [number, number][], bybitK
     }
   }
 
-  if (result.length > DISPLAY_KLINES) {
-    return result.slice(-DISPLAY_KLINES);
-  }
-  return result;
+  return result.length > DISPLAY_KLINES ? result.slice(-DISPLAY_KLINES) : result;
 }
 
-export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) {
+// ── Component ──────────────────────────────────────────────
+
+export function OpportunitySpreadModal({ symbol, exchangeA, exchangeB }: OpportunitySpreadModalProps) {
   const [data, setData] = useState<DataPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentSpread, setCurrentSpread] = useState<number | null>(null);
-  const [currentPrices, setCurrentPrices] = useState<{ binance: number; bybit: number } | null>(null);
-  const binanceWsRef = useRef<WebSocket | null>(null);
-  const bybitWsRef = useRef<WebSocket | null>(null);
-  const latestPricesRef = useRef<{ binance: number; bybit: number }>({ binance: 0, bybit: 0 });
+  const [currentPrices, setCurrentPrices] = useState<{ a: number; b: number } | null>(null);
+  const [fundingRates, setFundingRates] = useState<{ exchangeA: FundingRateEntry[]; exchangeB: FundingRateEntry[] }>({ exchangeA: [], exchangeB: [] });
+  const wsARef = useRef<WebSocket | null>(null);
+  const wsBRef = useRef<WebSocket | null>(null);
+  const latestPricesRef = useRef<{ a: number; b: number }>({ a: 0, b: 0 });
+
+  const colorA = EXCHANGE_COLORS[exchangeA];
+  const colorB = EXCHANGE_COLORS[exchangeB];
+  const textClassA = EXCHANGE_TEXT_CLASSES[exchangeA];
+  const textClassB = EXCHANGE_TEXT_CLASSES[exchangeB];
 
   // Fetch historical data
   useEffect(() => {
@@ -218,79 +264,76 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
       return;
     }
 
+    let cancelled = false;
+
     const fetchData = async () => {
       setIsLoading(true);
-      const [binanceKlines, bybitKlines] = await Promise.all([
-        fetchBinanceKlines(symbol),
-        fetchBybitKlines(symbol),
+      const [klinesA, klinesB, fundingHistory] = await Promise.all([
+        fetchKlines(exchangeA, symbol),
+        fetchKlines(exchangeB, symbol),
+        fetchFundingHistory(symbol, exchangeA, exchangeB),
       ]);
-
-      const mergedData = mergeKlinesAndCalculateSpread(binanceKlines, bybitKlines);
+      if (cancelled) return;
+      setFundingRates(fundingHistory);
+      const mergedData = mergeKlinesAndCalculateSpread(klinesA, klinesB);
       setData(mergedData);
 
       if (mergedData.length > 0) {
         const latest = mergedData[mergedData.length - 1];
         setCurrentSpread(latest.spread);
-        setCurrentPrices({ binance: latest.binancePrice, bybit: latest.bybitPrice });
-        latestPricesRef.current = { binance: latest.binancePrice, bybit: latest.bybitPrice };
+        setCurrentPrices({ a: latest.exchangeAPrice, b: latest.exchangeBPrice });
+        latestPricesRef.current = { a: latest.exchangeAPrice, b: latest.exchangeBPrice };
       }
       setIsLoading(false);
     };
 
     fetchData();
-  }, [symbol]);
+    return () => { cancelled = true; };
+  }, [symbol, exchangeA, exchangeB]);
 
-  // WebSocket for real-time updates
+  // WebSocket for real-time updates (deferred to avoid Strict Mode double-mount warnings)
   useEffect(() => {
     if (!symbol) return;
 
-    const normalizedSymbol = normalizeSymbol(symbol);
-
-    const binanceWs = new WebSocket(`wss://fstream.binance.com/ws/${normalizedSymbol}@kline_1m`);
-    binanceWsRef.current = binanceWs;
-
-    binanceWs.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.e === "kline" && msg.k) {
-          latestPricesRef.current.binance = parseFloat(msg.k.c);
-          updateCurrentSpread();
-        }
-      } catch {}
-    };
-
-    const bybitWs = new WebSocket("wss://stream.bybit.com/v5/public/linear");
-    bybitWsRef.current = bybitWs;
-
-    bybitWs.onopen = () => {
-      bybitWs.send(JSON.stringify({ op: "subscribe", args: [`kline.1.${symbol.toUpperCase()}`] }));
-    };
-
-    bybitWs.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.topic?.startsWith("kline.") && msg.data?.[0]) {
-          latestPricesRef.current.bybit = parseFloat(msg.data[0].close);
-          updateCurrentSpread();
-        }
-      } catch {}
-    };
+    let cancelled = false;
+    let wsA: WebSocket | null = null;
+    let wsB: WebSocket | null = null;
 
     const updateCurrentSpread = () => {
-      const { binance, bybit } = latestPricesRef.current;
-      if (binance > 0 && bybit > 0) {
-        const spread = bybit - binance;
-        const spreadBps = (spread / binance) * 100 * 100;
+      if (cancelled) return;
+      const { a, b } = latestPricesRef.current;
+      if (a > 0 && b > 0) {
+        const spread = b - a;
+        const spreadBps = (spread / a) * 100 * 100;
         setCurrentSpread(spreadBps);
-        setCurrentPrices({ binance, bybit });
+        setCurrentPrices({ a, b });
       }
     };
 
+    // Defer WebSocket creation so Strict Mode cleanup can cancel before connections open
+    const timerId = setTimeout(() => {
+      if (cancelled) return;
+
+      wsA = connectExchangeWs(exchangeA, symbol, (price) => {
+        latestPricesRef.current.a = price;
+        updateCurrentSpread();
+      });
+      wsARef.current = wsA;
+
+      wsB = connectExchangeWs(exchangeB, symbol, (price) => {
+        latestPricesRef.current.b = price;
+        updateCurrentSpread();
+      });
+      wsBRef.current = wsB;
+    }, 100);
+
     return () => {
-      binanceWsRef.current?.close();
-      bybitWsRef.current?.close();
+      cancelled = true;
+      clearTimeout(timerId);
+      if (wsA) { wsA.onmessage = null; wsA.onopen = null; wsA.close(); }
+      if (wsB) { wsB.onmessage = null; wsB.onopen = null; wsB.close(); }
     };
-  }, [symbol]);
+  }, [symbol, exchangeA, exchangeB]);
 
   const chartData = useMemo(() => {
     if (data.length <= 2000) return data;
@@ -312,21 +355,103 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
     return [Math.floor(min - padding), Math.ceil(max + padding)];
   }, [chartData]);
 
+  // Filter and group funding rates within chart time range
+  const groupedFundingRates = useMemo(() => {
+    if (chartData.length === 0) return [];
+    const minTime = chartData[0].time;
+    const maxTime = chartData[chartData.length - 1].time;
+
+    const allRates: { timestamp: number; exchange: Exchange; rateBps: string }[] = [];
+
+    for (const entry of fundingRates.exchangeA) {
+      if (entry.timestamp >= minTime && entry.timestamp <= maxTime) {
+        allRates.push({ timestamp: entry.timestamp, exchange: exchangeA, rateBps: (entry.rate * 100 * 100).toFixed(2) });
+      }
+    }
+    for (const entry of fundingRates.exchangeB) {
+      if (entry.timestamp >= minTime && entry.timestamp <= maxTime) {
+        allRates.push({ timestamp: entry.timestamp, exchange: exchangeB, rateBps: (entry.rate * 100 * 100).toFixed(2) });
+      }
+    }
+
+    allRates.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Group events within 30 minutes of each other
+    const MERGE_THRESHOLD_MS = 30 * 60 * 1000;
+    const groups: { timestamp: number; lines: string[] }[] = [];
+
+    for (const rate of allRates) {
+      const last = groups[groups.length - 1];
+      if (last && Math.abs(rate.timestamp - last.timestamp) < MERGE_THRESHOLD_MS) {
+        last.lines.push(`${rate.exchange} ${rate.rateBps}bp`);
+      } else {
+        groups.push({ timestamp: rate.timestamp, lines: [`${rate.exchange} ${rate.rateBps}bp`] });
+      }
+    }
+
+    return groups;
+  }, [chartData, fundingRates, exchangeA, exchangeB]);
+
   const priceYDomain = useMemo(() => {
     if (chartData.length === 0) return [0, 100];
-    const allPrices = chartData.flatMap((d) => [d.binancePrice, d.bybitPrice]);
+    const allPrices = chartData.flatMap((d) => [d.exchangeAPrice, d.exchangeBPrice]);
     const min = Math.min(...allPrices);
     const max = Math.max(...allPrices);
     const padding = (max - min) * 0.05 || 1;
     return [min - padding, max + padding];
   }, [chartData]);
 
+  // Tooltip components (defined inside to access exchange names)
+  function SpreadTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string }>; label?: number }) {
+    if (!active || !payload || !payload.length) return null;
+    const date = new Date(label || 0);
+    const spreadData = payload.find((p) => p.dataKey === "spread");
+    const maData = payload.find((p) => p.dataKey === "ma");
+    const spread = spreadData?.value ?? 0;
+    const ma = maData?.value;
+    return (
+      <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
+        <div className="text-muted-foreground mb-2">
+          {date.toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </div>
+        <div className={cn("font-bold", spread > 0 ? "text-emerald-600" : "text-red-600")}>
+          Spread: {spread.toFixed(2)} bp
+        </div>
+        {ma !== undefined && <div className="text-amber-500 mt-1">MA: {ma.toFixed(2)} bp</div>}
+      </div>
+    );
+  }
+
+  function PriceTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string }>; label?: number }) {
+    if (!active || !payload || !payload.length) return null;
+    const date = new Date(label || 0);
+    const dataA = payload.find((p) => p.dataKey === "exchangeAPrice");
+    const dataB = payload.find((p) => p.dataKey === "exchangeBPrice");
+    return (
+      <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
+        <div className="text-muted-foreground mb-2">
+          {date.toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </div>
+        {dataA && (
+          <div className={textClassA}>
+            {exchangeA}: ${formatPrice(dataA.value)}
+          </div>
+        )}
+        {dataB && (
+          <div className={textClassB}>
+            {exchangeB}: ${formatPrice(dataB.value)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!symbol) return null;
 
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
-        載入歷史數據中...
+        Loading historical data...
       </div>
     );
   }
@@ -334,7 +459,7 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
   if (chartData.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
-        無可用數據
+        No data available
       </div>
     );
   }
@@ -344,8 +469,10 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
       {/* Header with current values */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Badge variant="outline" className="text-lg px-3 py-1">{symbol}</Badge>
-          <span className="text-sm text-muted-foreground">(1天 / MA 1440)</span>
+          <Badge variant="outline" className="text-lg px-3 py-1">
+            {symbol}
+          </Badge>
+          <span className="text-sm text-muted-foreground">(1d / MA 1440)</span>
           <div className="flex items-center gap-3 ml-4 text-xs">
             <div className="flex items-center gap-1">
               <div className="w-3 h-0.5 bg-blue-500"></div>
@@ -357,7 +484,11 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
             </div>
             <div className="flex items-center gap-1">
               <div className="w-3 h-0.5 bg-purple-400"></div>
-              <span className="text-muted-foreground">±1σ</span>
+              <span className="text-muted-foreground">&plusmn;1&sigma;</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-0.5 bg-red-500" style={{ borderTop: "1px dashed #ef4444" }}></div>
+              <span className="text-muted-foreground">Funding</span>
             </div>
           </div>
         </div>
@@ -365,18 +496,19 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
           {currentPrices && (
             <>
               <div>
-                <span className="text-yellow-500">Binance: </span>
-                <span className="font-mono">${formatPrice(currentPrices.binance)}</span>
+                <span className={textClassA}>{exchangeA}: </span>
+                <span className="font-mono">${formatPrice(currentPrices.a)}</span>
               </div>
               <div>
-                <span className="text-cyan-500">Bybit: </span>
-                <span className="font-mono">${formatPrice(currentPrices.bybit)}</span>
+                <span className={textClassB}>{exchangeB}: </span>
+                <span className="font-mono">${formatPrice(currentPrices.b)}</span>
               </div>
             </>
           )}
           {currentSpread !== null && (
             <div className={cn("font-bold text-lg", currentSpread > 0 ? "text-emerald-500" : "text-red-500")}>
-              {currentSpread > 0 ? "+" : ""}{currentSpread.toFixed(2)} bp
+              {currentSpread > 0 ? "+" : ""}
+              {currentSpread.toFixed(2)} bp
             </div>
           )}
         </div>
@@ -384,7 +516,9 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
 
       {/* Spread Chart */}
       <div className="flex-1 min-h-0">
-        <div className="text-sm text-muted-foreground mb-1">價差走勢 (Bybit - Binance)</div>
+        <div className="text-sm text-muted-foreground mb-1">
+          Spread ({exchangeB} - {exchangeA})
+        </div>
         <div className="h-[calc(100%-20px)]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ left: 50, right: 20, top: 10, bottom: 10 }}>
@@ -403,16 +537,19 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
                   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
                 }}
               />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                domain={spreadYDomain}
-                tick={{ fontSize: 11, fill: "#888888" }}
-                tickFormatter={(value) => `${value}bp`}
-              />
+              <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={spreadYDomain} tick={{ fontSize: 11, fill: "#888888" }} tickFormatter={(value) => `${value}bp`} />
               <Tooltip content={<SpreadTooltip />} />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+              {groupedFundingRates.map((group, idx) => (
+                <ReferenceLine
+                  key={`funding-spread-${idx}`}
+                  x={group.timestamp}
+                  stroke="#ef4444"
+                  strokeWidth={1}
+                  strokeDasharray="4 2"
+                  label={<FundingRateLabel lines={group.lines} />}
+                />
+              ))}
               <Line type="monotone" dataKey="upper3" stroke="#d8b4fe" strokeWidth={1} dot={false} isAnimationActive={false} connectNulls={false} />
               <Line type="monotone" dataKey="lower3" stroke="#d8b4fe" strokeWidth={1} dot={false} isAnimationActive={false} connectNulls={false} />
               <Line type="monotone" dataKey="upper2" stroke="#c084fc" strokeWidth={1} dot={false} isAnimationActive={false} connectNulls={false} />
@@ -428,7 +565,7 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
 
       {/* Price Chart */}
       <div className="flex-1 min-h-0">
-        <div className="text-sm text-muted-foreground mb-1">價格走勢</div>
+        <div className="text-sm text-muted-foreground mb-1">Price</div>
         <div className="h-[calc(100%-20px)]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ left: 50, right: 20, top: 10, bottom: 10 }}>
@@ -447,17 +584,19 @@ export function OpportunitySpreadModal({ symbol }: OpportunitySpreadModalProps) 
                   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
                 }}
               />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                domain={priceYDomain}
-                tick={{ fontSize: 11, fill: "#888888" }}
-                tickFormatter={(value) => `$${formatPrice(value)}`}
-              />
+              <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={priceYDomain} tick={{ fontSize: 11, fill: "#888888" }} tickFormatter={(value) => `$${formatPrice(value)}`} />
               <Tooltip content={<PriceTooltip />} />
-              <Line type="monotone" dataKey="binancePrice" name="Binance" stroke="#eab308" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="bybitPrice" name="Bybit" stroke="#06b6d4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+              {groupedFundingRates.map((group, idx) => (
+                <ReferenceLine
+                  key={`funding-price-${idx}`}
+                  x={group.timestamp}
+                  stroke="#ef4444"
+                  strokeWidth={1}
+                  strokeDasharray="4 2"
+                />
+              ))}
+              <Line type="monotone" dataKey="exchangeAPrice" name={exchangeA} stroke={colorA} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="exchangeBPrice" name={exchangeB} stroke={colorB} strokeWidth={1.5} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

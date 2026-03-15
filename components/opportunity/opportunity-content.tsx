@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -28,6 +29,8 @@ export function OpportunityContent() {
   const [costBpsInput, setCostBpsInput] = useState<string>("20"); // String for input
   const costBps = parseInt(costBpsInput) || 0; // Parse for calculations
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [selectedExchangeA, setSelectedExchangeA] = useState<Exchange>('Binance');
+  const [selectedExchangeB, setSelectedExchangeB] = useState<Exchange>('Bybit');
 
   const {
     opportunities,
@@ -161,7 +164,11 @@ export function OpportunityContent() {
         <TabsContent value="opportunities" className="mt-4">
           <OpportunityTable
             opportunities={filteredOpportunities}
-            onSymbolClick={(symbol) => setSelectedSymbol(symbol)}
+            onSymbolClick={(symbol, exchangeA, exchangeB) => {
+              setSelectedSymbol(symbol);
+              setSelectedExchangeA(exchangeA);
+              setSelectedExchangeB(exchangeB);
+            }}
           />
         </TabsContent>
 
@@ -177,10 +184,11 @@ export function OpportunityContent() {
       <Dialog open={selectedSymbol !== null} onOpenChange={(open) => !open && setSelectedSymbol(null)}>
         <DialogContent className="!max-w-[95vw] w-[95vw] max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>{selectedSymbol} - Binance vs Bybit</DialogTitle>
+            <DialogTitle>{selectedSymbol} - {selectedExchangeA} vs {selectedExchangeB}</DialogTitle>
+            <DialogDescription className="sr-only">Spread and price chart comparison</DialogDescription>
           </DialogHeader>
           <div className="h-[75vh]">
-            <OpportunitySpreadModal symbol={selectedSymbol} />
+            <OpportunitySpreadModal symbol={selectedSymbol} exchangeA={selectedExchangeA} exchangeB={selectedExchangeB} />
           </div>
         </DialogContent>
       </Dialog>

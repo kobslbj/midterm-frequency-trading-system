@@ -34,6 +34,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
+
+  // Skip auth check for API routes (they serve data, not pages)
+  if (isApiRoute) {
+    return supabaseResponse;
+  }
 
   // If user is not logged in and trying to access protected route
   if (!user && !isAuthPage) {

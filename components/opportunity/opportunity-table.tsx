@@ -14,11 +14,11 @@ import {
 } from "@/components/ui/table";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Opportunity, OpportunityType } from "@/lib/types/opportunity";
+import type { Opportunity, OpportunityType, Exchange } from "@/lib/types/opportunity";
 
 interface OpportunityTableProps {
   opportunities: Opportunity[];
-  onSymbolClick?: (symbol: string) => void;
+  onSymbolClick?: (symbol: string, exchangeA: Exchange, exchangeB: Exchange) => void;
 }
 
 type SortKey = 'symbol' | 'type' | 'rate_spread_bps' | 'net_profit_bps' | 'time_to_funding_a_secs' | 'time_to_funding_b_secs' | 'annualized_return_pct';
@@ -181,7 +181,7 @@ export function OpportunityTable({ opportunities, onSymbolClick }: OpportunityTa
                 >
                   <TableCell
                     className="font-medium cursor-pointer hover:text-blue-500"
-                    onClick={() => onSymbolClick?.(opp.symbol)}
+                    onClick={() => onSymbolClick?.(opp.symbol, opp.exchange_a, opp.exchange_b)}
                   >
                     {opp.symbol}
                   </TableCell>
