@@ -118,6 +118,7 @@ async function fetchFundingHistory(symbol: string, exchangeA: Exchange, exchange
     }
     const data = await res.json();
     console.log("[funding-history] result:", { a: data.exchangeA?.length, b: data.exchangeB?.length });
+    if (data._debug?.length) console.warn("[funding-history] server errors:", data._debug);
     return data;
   } catch (e) {
     console.error("[funding-history] fetch failed:", e);

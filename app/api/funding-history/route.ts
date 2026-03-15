@@ -148,15 +148,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const errors: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      errors.push(args.map(a => String(a)).join(" "));
+      origWarn.apply(console, args);
+    };
+
     const [historyA, historyB] = await Promise.all([
       getFundingHistoryFetcher(exchangeA)(symbol),
       getFundingHistoryFetcher(exchangeB)(symbol),
     ]);
 
-    console.log(`[funding-history] ${symbol}: ${exchangeA}=${historyA.length}, ${exchangeB}=${historyB.length}`);
-    return NextResponse.json({ exchangeA: historyA, exchangeB: historyB });
+    console.warn = origWarn;
+    return NextResponse.json({ exchangeA: historyA, exchangeB: historyB, _debug: errors });
   } catch (e) {
     console.error(`[funding-history] error:`, e);
-    return NextResponse.json({ exchangeA: [], exchangeB: [] });
+    return NextResponse.json({ exchangeA: [], exchangeB: [], _debug: [String(e)] });
   }
 }
