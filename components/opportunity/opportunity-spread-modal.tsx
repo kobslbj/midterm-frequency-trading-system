@@ -126,19 +126,6 @@ async function fetchFundingHistory(symbol: string, exchangeA: Exchange, exchange
   }
 }
 
-// Custom label component for funding rate reference lines (supports multi-line)
-function FundingRateLabel({ viewBox, lines }: { viewBox?: { x?: number; y?: number }; lines: string[] }) {
-  const x = viewBox?.x ?? 0;
-  return (
-    <g>
-      {lines.map((line, i) => (
-        <text key={i} x={x + 3} y={14 + i * 12} fill="#ef4444" fontSize={9} textAnchor="start">
-          {line}
-        </text>
-      ))}
-    </g>
-  );
-}
 
 // ── WebSocket Connectors ───────────────────────────────────
 
@@ -419,11 +406,16 @@ export function OpportunitySpreadModal({ symbol, exchangeA, exchangeB }: Opportu
   // Tooltip components (defined inside to access exchange names)
   function SpreadTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string }>; label?: number }) {
     if (!active || !payload || !payload.length) return null;
-    const date = new Date(label || 0);
+    const ts = label || 0;
+    const date = new Date(ts);
     const spreadData = payload.find((p) => p.dataKey === "spread");
     const maData = payload.find((p) => p.dataKey === "ma");
     const spread = spreadData?.value ?? 0;
     const ma = maData?.value;
+
+    // Find the next upcoming funding event (ts falls in the interval leading up to it)
+    const nextFunding = groupedFundingRates.find((g) => g.timestamp >= ts);
+
     return (
       <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
         <div className="text-muted-foreground mb-2">
@@ -433,15 +425,26 @@ export function OpportunitySpreadModal({ symbol, exchangeA, exchangeB }: Opportu
           Spread: {spread.toFixed(2)} bp
         </div>
         {ma !== undefined && <div className="text-amber-500 mt-1">MA: {ma.toFixed(2)} bp</div>}
+        {nextFunding && (
+          <div className="mt-2 pt-2 border-t border-red-500/30">
+            {nextFunding.lines.map((line, i) => (
+              <div key={i} className="text-red-400 text-xs">{line}</div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
   function PriceTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string }>; label?: number }) {
     if (!active || !payload || !payload.length) return null;
-    const date = new Date(label || 0);
+    const ts = label || 0;
+    const date = new Date(ts);
     const dataA = payload.find((p) => p.dataKey === "exchangeAPrice");
     const dataB = payload.find((p) => p.dataKey === "exchangeBPrice");
+
+    const nextFunding = groupedFundingRates.find((g) => g.timestamp >= ts);
+
     return (
       <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
         <div className="text-muted-foreground mb-2">
@@ -455,6 +458,13 @@ export function OpportunitySpreadModal({ symbol, exchangeA, exchangeB }: Opportu
         {dataB && (
           <div className={textClassB}>
             {exchangeB}: ${formatPrice(dataB.value)}
+          </div>
+        )}
+        {nextFunding && (
+          <div className="mt-2 pt-2 border-t border-red-500/30">
+            {nextFunding.lines.map((line, i) => (
+              <div key={i} className="text-red-400 text-xs">{line}</div>
+            ))}
           </div>
         )}
       </div>
@@ -562,7 +572,6 @@ export function OpportunitySpreadModal({ symbol, exchangeA, exchangeB }: Opportu
                   stroke="#ef4444"
                   strokeWidth={1}
                   strokeDasharray="4 2"
-                  label={<FundingRateLabel lines={group.lines} />}
                 />
               ))}
               <Line type="monotone" dataKey="upper3" stroke="#d8b4fe" strokeWidth={1} dot={false} isAnimationActive={false} connectNulls={false} />
