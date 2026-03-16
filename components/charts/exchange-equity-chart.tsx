@@ -41,9 +41,13 @@ export function ExchangeEquityChart({ data }: ExchangeEquityChartProps) {
   const latestBybit = data.length > 0 ? data[data.length - 1].bybit : 0;
 
   // Calculate Y-axis domain based on actual data range
-  const allValues = data.flatMap((d) => [d.binance, d.bybit]);
-  const minValue = Math.min(...allValues);
-  const maxValue = Math.max(...allValues);
+  let minValue = Infinity, maxValue = -Infinity;
+  for (const d of data) {
+    if (d.binance < minValue) minValue = d.binance;
+    if (d.binance > maxValue) maxValue = d.binance;
+    if (d.bybit < minValue) minValue = d.bybit;
+    if (d.bybit > maxValue) maxValue = d.bybit;
+  }
   const padding = (maxValue - minValue) * 0.1 || 10; // 10% padding
   const yMin = Math.floor(minValue - padding);
   const yMax = Math.ceil(maxValue + padding);

@@ -118,7 +118,8 @@ function calculateStats(equityCurve: EquityCurve[], combinedTrades: CombinedTrad
     : 0;
 
   // Max Drawdown (find the maximum drawdown_pct in the data)
-  const maxDrawdown = Math.max(...sorted.map((p) => p.drawdown_pct));
+  let maxDrawdown = 0;
+  for (const p of sorted) { if (p.drawdown_pct > maxDrawdown) maxDrawdown = p.drawdown_pct; }
 
   // Positions count
   const positions = combinedTrades.length;

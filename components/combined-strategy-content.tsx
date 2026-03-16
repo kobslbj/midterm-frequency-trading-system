@@ -32,6 +32,32 @@ interface CombinedStrategyContentProps {
   enableHedge: boolean;
 }
 
+// Downsample time series: if range > 30 days, keep only every 5 minutes
+function downsampleTimeSeries<T extends { ts: string }>(data: T[]): T[] {
+  if (data.length < 2) return data;
+  const sorted = [...data].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  const firstTs = new Date(sorted[0].ts).getTime();
+  const lastTs = new Date(sorted[sorted.length - 1].ts).getTime();
+  const rangeDays = (lastTs - firstTs) / (1000 * 60 * 60 * 24);
+
+  if (rangeDays <= 30) return data;
+
+  const intervalMs = 5 * 60 * 1000;
+  const result: T[] = [];
+  let lastKeptTs = 0;
+  for (const point of sorted) {
+    const ts = new Date(point.ts).getTime();
+    if (ts - lastKeptTs >= intervalMs || result.length === 0) {
+      result.push(point);
+      lastKeptTs = ts;
+    }
+  }
+  if (result[result.length - 1] !== sorted[sorted.length - 1]) {
+    result.push(sorted[sorted.length - 1]);
+  }
+  return result;
+}
+
 // Merge equity curve data from multiple runs with gap filling (flat line during gaps)
 // Gap threshold: if time between consecutive points > 10 minutes, insert a bridge point
 const GAP_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
@@ -68,9 +94,8 @@ function mergeEquityCurveData(data: EquityCurve[]): EquityCurve[] {
       const gap = currentTime - prevTime;
 
       // If gap > threshold, insert a bridge point just before current point
-      // with the previous point's values (creates a flat line during gap)
+      // with the previous session's last values (creates flat line during gap)
       if (gap > GAP_THRESHOLD_MS) {
-        // Insert bridge point 1ms before current point
         const bridgeTs = new Date(currentTime - 1).toISOString();
         merged.push({
           ...prev,
@@ -247,88 +272,111 @@ export function CombinedStrategyContent({
   runIds,
   enableHedge,
 }: CombinedStrategyContentProps) {
-  // State for data
+  // State: single source of truth
   const [equityCurve, setEquityCurve] = useState<EquityCurve[]>(initialEquityCurve);
   const [pnlSeries, setPnlSeries] = useState<PnlSeries[]>(initialPnlSeries);
   const [combinedTrades, setCombinedTrades] = useState<CombinedTrade[]>(initialCombinedTrades);
-  const [isFreshDataLoaded, setIsFreshDataLoaded] = useState(false);
-  const hasFetchedRef = useRef(false);
+  const [isFreshDataLoaded] = useState(true); // server already provided initial data
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+  const [allDataLoaded, setAllDataLoaded] = useState(false);
 
-  // Debug: log initial data received from server
-  useEffect(() => {
-    console.log(`[Combined] Initial equity_curve from server: ${initialEquityCurve.length} records`);
-    if (initialEquityCurve.length > 0) {
-      const sorted = [...initialEquityCurve].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-      console.log(`[Combined] Initial equity curve date range: ${sorted[0].ts} to ${sorted[sorted.length - 1].ts}`);
+  // Fetch all data for a single run with pagination
+  const fetchRunData = useCallback(async <T,>(
+    supabase: ReturnType<typeof createClient>,
+    table: string,
+    runId: string,
+  ): Promise<T[]> => {
+    const PAGE_SIZE = 1000;
+    const allData: T[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from(table)
+        .select("*")
+        .eq("run_id", runId)
+        .order("ts", { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) {
+        console.error(`[Combined] Error fetching ${table} for ${runId}:`, error);
+        break;
+      }
+
+      if (data && data.length > 0) {
+        allData.push(...(data as T[]));
+        offset += PAGE_SIZE;
+        hasMore = data.length === PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
     }
+
+    return allData;
   }, []);
 
-  // Fetch fresh data on mount with pagination (Supabase default limit is 1000)
-  useEffect(() => {
-    if (hasFetchedRef.current || runIds.length === 0) return;
-    hasFetchedRef.current = true;
+  // Fetch data for all runs in parallel (per-run queries to avoid timeout)
+  const fetchAllRunsData = useCallback(async <T,>(
+    supabase: ReturnType<typeof createClient>,
+    table: string,
+    ids: string[],
+  ): Promise<T[]> => {
+    const results = await Promise.all(
+      ids.map(id => fetchRunData<T>(supabase, table, id))
+    );
+    return results.flat().sort(
+      (a: any, b: any) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+    );
+  }, [fetchRunData]);
 
-    const fetchAllData = async <T,>(
-      supabase: ReturnType<typeof createClient>,
-      table: string,
-      runIds: string[]
-    ): Promise<T[]> => {
-      const PAGE_SIZE = 1000;
-      const allData: T[] = [];
-      let offset = 0;
-      let hasMore = true;
+  // Load all data on demand (when user clicks > 1w or All)
+  const handleLoadAll = useCallback(async () => {
+    if (allDataLoaded || isLoadingAll) return;
+    setIsLoadingAll(true);
+    console.log(`[Combined] Loading all data for runIds: ${runIds.join(", ")}`);
 
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from(table)
-          .select("*")
-          .in("run_id", runIds)
-          .order("ts", { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1);
+    const supabase = createClient();
+    const [allEquity, allPnl, allTrades] = await Promise.all([
+      fetchAllRunsData<EquityCurve>(supabase, "equity_curve", runIds),
+      fetchAllRunsData<PnlSeries>(supabase, "pnl_series", runIds),
+      fetchAllRunsData<CombinedTrade>(supabase, "combined_trades", runIds),
+    ]);
 
-        if (error) {
-          console.error(`[Combined] Error fetching ${table}:`, error);
-          break;
-        }
+    console.log(`[Combined] Fetched all data: equity=${allEquity.length}, pnl=${allPnl.length}, trades=${allTrades.length}`);
+    if (allEquity.length > 0) {
+      const first = allEquity[0].ts;
+      const last = allEquity[allEquity.length - 1].ts;
+      console.log(`[Combined] Equity range: ${first} to ${last}`);
+    }
 
-        if (data && data.length > 0) {
-          allData.push(...(data as T[]));
-          offset += PAGE_SIZE;
-          hasMore = data.length === PAGE_SIZE;
-        } else {
-          hasMore = false;
-        }
-      }
+    // Merge fetched data with current state (keep realtime records that may not be in DB yet)
+    setEquityCurve((current) => {
+      const keySet = new Set(allEquity.map(d => `${d.ts}_${d.run_id}`));
+      const realtimeOnly = current.filter(d => !keySet.has(`${d.ts}_${d.run_id}`));
+      const merged = [...allEquity, ...realtimeOnly].sort(
+        (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+      );
+      const ds = downsampleTimeSeries(merged);
+      console.log(`[Combined] Final equity: ${allEquity.length} (DB) + ${realtimeOnly.length} (realtime) = ${merged.length} -> ${ds.length} (downsampled)`);
+      return ds;
+    });
 
-      return allData;
-    };
+    setPnlSeries((current) => {
+      const keySet = new Set(allPnl.map(d => `${d.ts}_${d.run_id}`));
+      const realtimeOnly = current.filter(d => !keySet.has(`${d.ts}_${d.run_id}`));
+      const merged = [...allPnl, ...realtimeOnly].sort(
+        (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+      );
+      const ds = downsampleTimeSeries(merged);
+      console.log(`[Combined] Final pnl: ${allPnl.length} (DB) + ${realtimeOnly.length} (realtime) = ${merged.length} -> ${ds.length} (downsampled)`);
+      return ds;
+    });
 
-    const fetchFreshData = async () => {
-      const supabase = createClient();
-      console.log(`[Combined] Fetching fresh data for ${runIds.length} runs`);
-
-      const [equityData, pnlData, tradesData] = await Promise.all([
-        fetchAllData<EquityCurve>(supabase, "equity_curve", runIds),
-        fetchAllData<PnlSeries>(supabase, "pnl_series", runIds),
-        fetchAllData<CombinedTrade>(supabase, "combined_trades", runIds),
-      ]);
-
-      console.log(`[Combined] Got ${equityData.length} fresh equity_curve records`);
-      console.log(`[Combined] Got ${pnlData.length} fresh pnl_series records`);
-      console.log(`[Combined] Got ${tradesData.length} fresh combined_trades records`);
-      if (equityData.length > 0) {
-        const sorted = [...equityData].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-        console.log(`[Combined] Client equity curve date range: ${sorted[0].ts} to ${sorted[sorted.length - 1].ts}`);
-      }
-
-      setEquityCurve(equityData);
-      setPnlSeries(pnlData);
-      setCombinedTrades(tradesData);
-      setIsFreshDataLoaded(true);
-    };
-
-    fetchFreshData();
-  }, [runIds]);
+    setCombinedTrades(allTrades);
+    setAllDataLoaded(true);
+    setIsLoadingAll(false);
+  }, [runIds, allDataLoaded, isLoadingAll, fetchAllRunsData]);
 
   // Subscribe to realtime updates for all runs
   useEffect(() => {
@@ -457,72 +505,40 @@ export function CombinedStrategyContent({
     end: dataEndTime,
   });
 
-  const userChangedRangeRef = useRef(false);
   const dataStartTimestamp = dataStartTime.getTime();
   const dataEndTimestamp = dataEndTime.getTime();
 
-  // Sync time range when fresh data is loaded
+  // Initial sync: default to 1w on first load only
+  const hasInitializedRangeRef = useRef(false);
   useEffect(() => {
-    if (!isFreshDataLoaded) {
-      console.log("[Combined TimeRange] Waiting for fresh data to load...");
-      return;
-    }
+    if (!isFreshDataLoaded || hasInitializedRangeRef.current) return;
+    hasInitializedRangeRef.current = true;
 
-    console.log("[Combined TimeRange] Fresh data loaded, syncing time range");
-    console.log("[Combined TimeRange] Data range:", new Date(dataStartTimestamp).toISOString(), "-", new Date(dataEndTimestamp).toISOString());
-
-    if (!userChangedRangeRef.current) {
-      console.log("[Combined TimeRange] Auto-syncing to full range");
-      setTimeRange({
-        start: new Date(dataStartTimestamp),
-        end: new Date(dataEndTimestamp),
-      });
-    }
+    const end = new Date(dataEndTimestamp);
+    const weekAgo = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const start = weekAgo < new Date(dataStartTimestamp) ? new Date(dataStartTimestamp) : weekAgo;
+    console.log("[Combined TimeRange] Initial sync to 1w range");
+    setTimeRange({ start, end });
   }, [isFreshDataLoaded, dataStartTimestamp, dataEndTimestamp]);
 
-  // Handle real-time updates - extend time range when new data arrives
+  // Realtime: extend time range end when new data arrives (keep user's start)
   useEffect(() => {
-    if (!isFreshDataLoaded) return;
+    if (!isFreshDataLoaded || !hasInitializedRangeRef.current) return;
 
-    // If user hasn't manually changed the range, keep syncing to full range
-    if (!userChangedRangeRef.current) {
-      setTimeRange((prev) => {
-        // Only update if the range actually changed
-        if (prev.start.getTime() !== dataStartTimestamp || prev.end.getTime() !== dataEndTimestamp) {
-          console.log("[Combined TimeRange] Realtime update - syncing to new range");
-          return {
-            start: new Date(dataStartTimestamp),
-            end: new Date(dataEndTimestamp),
-          };
-        }
-        return prev;
-      });
-    } else {
-      // User has manually set a range - only extend if near the data end
-      setTimeRange((prev) => {
-        const isNearDataEnd = dataEndTimestamp - prev.end.getTime() < 2 * 60 * 1000;
-        if (isNearDataEnd && prev.end.getTime() < dataEndTimestamp) {
-          console.log("[Combined TimeRange] Auto-extending to new data end");
-          return {
-            start: prev.start,
-            end: new Date(dataEndTimestamp),
-          };
-        }
-        return prev;
-      });
-    }
-  }, [dataEndTimestamp, dataStartTimestamp, isFreshDataLoaded]);
+    setTimeRange((prev) => {
+      if (dataEndTimestamp > prev.end.getTime()) {
+        return { start: prev.start, end: new Date(dataEndTimestamp) };
+      }
+      return prev;
+    });
+  }, [dataEndTimestamp, isFreshDataLoaded]);
 
   const handleTimeRangeChange = useCallback((range: TimeRange) => {
-    const isAllRange =
-      Math.abs(range.start.getTime() - dataStartTime.getTime()) < 1000 &&
-      Math.abs(range.end.getTime() - dataEndTime.getTime()) < 1000;
-    userChangedRangeRef.current = !isAllRange;
+    console.log(`[Combined TimeRange] User changed range: ${range.start.toISOString()} to ${range.end.toISOString()}`);
     setTimeRange(range);
-  }, [dataStartTime, dataEndTime]);
+  }, []);
 
   const handleChartRangeChange = useCallback((startTime: Date, endTime: Date) => {
-    userChangedRangeRef.current = true;
     setTimeRange({ start: startTime, end: endTime });
   }, []);
 
@@ -649,6 +665,9 @@ export function CombinedStrategyContent({
           dataEndTime={dataEndTime}
           onRangeChange={handleTimeRangeChange}
           currentRange={timeRange}
+          onLoadAll={handleLoadAll}
+          isLoadingAll={isLoadingAll}
+          allDataLoaded={allDataLoaded}
         />
 
         {/* Row 1: Equity Curve */}

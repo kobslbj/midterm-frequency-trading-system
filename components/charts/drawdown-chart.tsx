@@ -39,7 +39,8 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function DrawdownChart({ data }: DrawdownChartProps) {
-  const maxDrawdown = data.length > 0 ? Math.min(...data.map((d) => d.drawdown)) : 0;
+  let maxDrawdown = 0;
+  for (const d of data) { if (d.drawdown < maxDrawdown) maxDrawdown = d.drawdown; }
   const maxDrawdownPoint = data.find((d) => d.drawdown === maxDrawdown);
 
   return (

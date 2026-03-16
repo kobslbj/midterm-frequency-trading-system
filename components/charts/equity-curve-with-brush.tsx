@@ -46,9 +46,12 @@ export function EquityCurveWithBrush({
   const currentEquity = data.length > 0 ? data[data.length - 1].equity : 0;
 
   // Calculate Y-axis domain based on actual data range
-  const allValues = data.map((d) => d.equity);
-  const minValue = allValues.length > 0 ? Math.min(...allValues) : 0;
-  const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0;
+  let minValue = data.length > 0 ? data[0].equity : 0;
+  let maxValue = minValue;
+  for (const d of data) {
+    if (d.equity < minValue) minValue = d.equity;
+    if (d.equity > maxValue) maxValue = d.equity;
+  }
   const padding = (maxValue - minValue) * 0.1 || 10;
   const yMin = Math.floor(minValue - padding);
   const yMax = Math.ceil(maxValue + padding);

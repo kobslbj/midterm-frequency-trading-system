@@ -90,17 +90,26 @@ export function TimeRangeSelector({
 
     const end = dataEndTime;
     const start = new Date(end.getTime() - preset.minutes * 60 * 1000);
-
     const finalStart = start < dataStartTime ? dataStartTime : start;
+
+    console.log(`[TimeRange] Clicked "${label}" → ${finalStart.toISOString()} to ${end.toISOString()} (allDataLoaded=${allDataLoaded})`);
+
+    // If selecting a range > 7 days, trigger loadAll to swap in full data
+    if (preset.minutes > 10080 && onLoadAll) {
+      console.log(`[TimeRange] Triggering loadAll for range > 1w`);
+      onLoadAll();
+    }
+
     onRangeChange({ start: finalStart, end });
   };
 
   const handleShowAll = () => {
-    // If all data is not loaded yet and we have a callback, trigger it
-    if (!allDataLoaded && onLoadAll) {
+    console.log(`[TimeRange] Clicked "All" → ${dataStartTime.toISOString()} to ${dataEndTime.toISOString()} (allDataLoaded=${allDataLoaded})`);
+
+    if (onLoadAll) {
+      console.log(`[TimeRange] Triggering loadAll`);
       onLoadAll();
     }
-    // Always update the range to show all
     onRangeChange({ start: dataStartTime, end: dataEndTime });
   };
 

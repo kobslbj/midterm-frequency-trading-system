@@ -35,9 +35,11 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
   const currentEquity = data.length > 0 ? data[data.length - 1].equity : 0;
 
   // Calculate Y-axis domain based on actual data range
-  const allValues = data.map((d) => d.equity);
-  const minValue = Math.min(...allValues);
-  const maxValue = Math.max(...allValues);
+  let minValue = Infinity, maxValue = -Infinity;
+  for (const d of data) {
+    if (d.equity < minValue) minValue = d.equity;
+    if (d.equity > maxValue) maxValue = d.equity;
+  }
   const padding = (maxValue - minValue) * 0.1 || 10;
   const yMin = Math.floor(minValue - padding);
   const yMax = Math.ceil(maxValue + padding);

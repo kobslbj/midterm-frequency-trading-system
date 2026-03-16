@@ -46,8 +46,12 @@ export function ExposureChart({ data }: ExposureChartProps) {
   // Calculate Y-axis domain
   const { yMin, yMax } = useMemo(() => {
     if (data.length === 0) return { yMin: 0, yMax: 100 };
-    const allValues = data.flatMap((d) => [d.binance_exposure, d.bybit_exposure, d.total_exposure]);
-    const max = Math.max(...allValues);
+    let max = 0;
+    for (const d of data) {
+      if (d.binance_exposure > max) max = d.binance_exposure;
+      if (d.bybit_exposure > max) max = d.bybit_exposure;
+      if (d.total_exposure > max) max = d.total_exposure;
+    }
     const padding = max * 0.1 || 10;
     return {
       yMin: 0,

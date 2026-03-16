@@ -49,9 +49,15 @@ export function PnLBreakdownChart({ data }: PnLBreakdownChartProps) {
   const latestFee = data.length > 0 ? data[data.length - 1].total_fee : 0;
 
   // Calculate Y-axis domain based on actual data range
-  const allValues = data.flatMap((d) => [d.funding_pnl, d.price_pnl, d.total_pnl]);
-  const minValue = allValues.length > 0 ? Math.min(...allValues) : 0;
-  const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0;
+  let minValue = data.length > 0 ? data[0].total_pnl : 0;
+  let maxValue = minValue;
+  for (const d of data) {
+    const vals = [d.funding_pnl, d.price_pnl, d.total_pnl];
+    for (const v of vals) {
+      if (v < minValue) minValue = v;
+      if (v > maxValue) maxValue = v;
+    }
+  }
   const range = maxValue - minValue;
   const padding = range * 0.1 || 10;
   const yMin = Math.floor(minValue - padding);
