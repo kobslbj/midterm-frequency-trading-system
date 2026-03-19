@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Exchange } from "@/lib/types/opportunity";
 
+export const runtime = "edge";
+export const preferredRegion = ["sin1", "hkg1", "kix1"];
+
 const FETCH_KLINES = 2880;
 
 function formatExchangeSymbol(symbol: string, exchange: Exchange): string {

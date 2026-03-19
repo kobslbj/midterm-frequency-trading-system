@@ -310,8 +310,8 @@ export function SpreadChart({ symbol, entryTimes = [], entrySpread = null, onSym
       console.log(`[SpreadChart] Fetching historical data for ${symbol}`);
 
       const [binanceKlines, bybitKlines] = await Promise.all([
-        fetchBinanceKlines(symbol),
-        fetchBybitKlines(symbol),
+        fetch(`/api/klines?exchange=Binance&symbol=${encodeURIComponent(symbol)}`).then(r => r.json()).catch(() => []) as Promise<[number, number][]>,
+        fetch(`/api/klines?exchange=Bybit&symbol=${encodeURIComponent(symbol)}`).then(r => r.json()).catch(() => []) as Promise<[number, number][]>,
       ]);
 
       console.log(`[SpreadChart] Got ${binanceKlines.length} Binance klines, ${bybitKlines.length} Bybit klines`);

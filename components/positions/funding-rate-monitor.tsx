@@ -64,40 +64,13 @@ function getRateColor(rate: number): string {
   return "";
 }
 
-// Fetch Binance funding rate via premiumIndex
-async function fetchBinanceFunding(symbol: string): Promise<LiveFundingInfo | null> {
+// Fetch funding rate via server-side proxy to avoid CORS
+async function fetchFundingRate(symbol: string, exchange: string): Promise<LiveFundingInfo | null> {
   try {
-    const url = `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol.toUpperCase()}`;
-    const res = await fetch(url);
+    const res = await fetch(`/api/funding?exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`);
     if (!res.ok) return null;
     const data = await res.json();
-
-    return {
-      currentRate: parseFloat(data.lastFundingRate),
-      nextFundingTime: data.nextFundingTime,
-      intervalHours: 8, // default, will be overridden if fundingInfo available
-    };
-  } catch {
-    return null;
-  }
-}
-
-// Fetch Bybit funding rate via tickers
-async function fetchBybitFunding(symbol: string): Promise<LiveFundingInfo | null> {
-  try {
-    const url = `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol.toUpperCase()}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    if (data.retCode !== 0 || !data.result?.list?.length) return null;
-
-    const ticker = data.result.list[0];
-    return {
-      currentRate: parseFloat(ticker.fundingRate),
-      nextFundingTime: parseInt(ticker.nextFundingTime),
-      intervalHours: parseInt(ticker.fundingIntervalHour) || 8,
-    };
+    return data as LiveFundingInfo | null;
   } catch {
     return null;
   }
@@ -171,10 +144,8 @@ export function FundingRateMonitor({ positions }: FundingRateMonitorProps) {
       const key = `${pos.symbol}-${pos.exchange.toLowerCase()}`;
       let info: LiveFundingInfo | null = null;
 
-      if (pos.exchange.toLowerCase() === "binance") {
-        info = await fetchBinanceFunding(pos.symbol);
-      } else if (pos.exchange.toLowerCase() === "bybit") {
-        info = await fetchBybitFunding(pos.symbol);
+      if (pos.exchange.toLowerCase() === "binance" || pos.exchange.toLowerCase() === "bybit") {
+        info = await fetchFundingRate(pos.symbol, pos.exchange);
       }
 
       if (info) {
