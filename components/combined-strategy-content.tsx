@@ -30,6 +30,7 @@ interface CombinedStrategyContentProps {
   initialCapital: number;
   runIds: string[];
   enableHedge: boolean;
+  shareRatio: number;
 }
 
 // Downsample time series: if range > 30 days, keep only every 5 minutes
@@ -217,10 +218,10 @@ function mergePnlSeriesData(data: PnlSeries[]): PnlSeries[] {
 }
 
 // Transform functions (same as run-details-content)
-function transformEquityCurveData(data: EquityCurve[]): EquityCurveDataPoint[] {
+function transformEquityCurveData(data: EquityCurve[], shareRatio: number): EquityCurveDataPoint[] {
   return data.map((point) => ({
     time: point.ts,
-    equity: point.total_equity,
+    equity: point.total_equity * shareRatio,
   }));
 }
 
@@ -246,20 +247,20 @@ function transformExposureData(data: EquityCurve[]): ExposureDataPoint[] {
   });
 }
 
-function transformPnlBreakdownData(data: PnlSeries[]): PnLBreakdownDataPoint[] {
+function transformPnlBreakdownData(data: PnlSeries[], shareRatio: number): PnLBreakdownDataPoint[] {
   return data.map((point) => ({
     time: point.ts,
-    funding_pnl: point.total_funding_pnl,
-    price_pnl: point.total_price_pnl,
-    total_pnl: point.total_pnl,
-    total_fee: point.total_fee,
+    funding_pnl: point.total_funding_pnl * shareRatio,
+    price_pnl: point.total_price_pnl * shareRatio,
+    total_pnl: point.total_pnl * shareRatio,
+    total_fee: point.total_fee * shareRatio,
   }));
 }
 
-function transformCumulativePnLData(data: PnlSeries[]): CumulativePnLDataPoint[] {
+function transformCumulativePnLData(data: PnlSeries[], shareRatio: number): CumulativePnLDataPoint[] {
   return data.map((point) => ({
     time: point.ts,
-    cumulative: point.total_pnl,
+    cumulative: point.total_pnl * shareRatio,
   }));
 }
 
@@ -271,6 +272,7 @@ export function CombinedStrategyContent({
   initialCapital,
   runIds,
   enableHedge,
+  shareRatio,
 }: CombinedStrategyContentProps) {
   // State: single source of truth
   const [equityCurve, setEquityCurve] = useState<EquityCurve[]>(initialEquityCurve);
@@ -469,11 +471,11 @@ export function CombinedStrategyContent({
   }, [equityCurve]);
   const mergedPnlSeries = useMemo(() => mergePnlSeriesData(pnlSeries), [pnlSeries]);
 
-  // Transform data for charts
-  const equityCurveData = useMemo(() => transformEquityCurveData(mergedEquityCurve), [mergedEquityCurve]);
+  // Transform data for charts (with share ratio scaling)
+  const equityCurveData = useMemo(() => transformEquityCurveData(mergedEquityCurve, shareRatio), [mergedEquityCurve, shareRatio]);
   const exposureData = useMemo(() => transformExposureData(mergedEquityCurve), [mergedEquityCurve]);
-  const pnlBreakdownData = useMemo(() => transformPnlBreakdownData(mergedPnlSeries), [mergedPnlSeries]);
-  const cumulativePnLData = useMemo(() => transformCumulativePnLData(mergedPnlSeries), [mergedPnlSeries]);
+  const pnlBreakdownData = useMemo(() => transformPnlBreakdownData(mergedPnlSeries, shareRatio), [mergedPnlSeries, shareRatio]);
+  const cumulativePnLData = useMemo(() => transformCumulativePnLData(mergedPnlSeries, shareRatio), [mergedPnlSeries, shareRatio]);
 
   // Calculate data time range
   const { dataStartTime, dataEndTime } = useMemo(() => {
@@ -594,7 +596,7 @@ export function CombinedStrategyContent({
         .filter((trade) => trade.total_pnl !== null)
         .map((trade, index) => ({
           trade: String(index + 1),
-          pnl: trade.total_pnl!,
+          pnl: trade.total_pnl! * shareRatio,
         }));
     }
 
@@ -630,12 +632,12 @@ export function CombinedStrategyContent({
         const trade2 = sorted[matchIndex];
         used.add(trade1.combined_trade_id);
         used.add(trade2.combined_trade_id);
-        const pairPnl = (trade1.total_pnl ?? 0) + (trade2.total_pnl ?? 0);
+        const pairPnl = ((trade1.total_pnl ?? 0) + (trade2.total_pnl ?? 0)) * shareRatio;
         pairPnLs.push(pairPnl);
       } else {
         used.add(trade1.combined_trade_id);
         if (trade1.total_pnl !== null) {
-          pairPnLs.push(trade1.total_pnl);
+          pairPnLs.push(trade1.total_pnl * shareRatio);
         }
       }
     }
@@ -644,7 +646,7 @@ export function CombinedStrategyContent({
       trade: String(index + 1),
       pnl,
     }));
-  }, [filteredCombinedTrades, enableHedge]);
+  }, [filteredCombinedTrades, enableHedge, shareRatio]);
 
   return (
     <>
@@ -657,6 +659,7 @@ export function CombinedStrategyContent({
         <PerformanceStats
           filteredEquityCurve={filteredEquityCurve}
           filteredCombinedTrades={filteredCombinedTrades}
+          shareRatio={shareRatio}
         />
 
         {/* Time Range Selector */}
@@ -702,6 +705,7 @@ export function CombinedStrategyContent({
             <CombinedTradesTable
               combinedTrades={filteredCombinedTrades}
               enableHedge={enableHedge}
+              shareRatio={shareRatio}
             />
           </div>
         </CardContent>

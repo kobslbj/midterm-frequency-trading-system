@@ -22,6 +22,7 @@ interface OverviewPerformanceChartProps {
   initialEquityData: EquityCurve[];
   runningRunIds: string[];
   runToStrategyMap: Record<string, string>; // run_id -> strategy_id
+  shareRatioMap: Record<string, number>; // strategy_id -> share_ratio
 }
 
 interface ChartDataPoint {
@@ -38,7 +39,8 @@ interface ChartDataPoint {
  */
 function aggregateTotalEquity(
   data: EquityCurve[],
-  runToStrategy: Record<string, string>
+  runToStrategy: Record<string, string>,
+  shareRatioMap: Record<string, number>
 ): ChartDataPoint[] {
   if (!data || data.length === 0) return [];
 
@@ -102,11 +104,12 @@ function aggregateTotalEquity(
   for (const ts of sortedTimestamps) {
     for (const [strategyId, strategyData] of byStrategy) {
       let idx = strategyIndices.get(strategyId) || 0;
+      const ratio = shareRatioMap[strategyId] ?? 1;
       while (
         idx < strategyData.length &&
         new Date(strategyData[idx].ts).getTime() <= ts
       ) {
-        lastValues.set(strategyId, strategyData[idx].total_equity);
+        lastValues.set(strategyId, strategyData[idx].total_equity * ratio);
         idx++;
       }
       strategyIndices.set(strategyId, idx);
@@ -132,6 +135,7 @@ export function OverviewPerformanceChart({
   initialEquityData,
   runningRunIds,
   runToStrategyMap,
+  shareRatioMap,
 }: OverviewPerformanceChartProps) {
   // Server already sends 24h data, no need to filter
   const [equityData, setEquityData] = useState<EquityCurve[]>(initialEquityData);
@@ -176,8 +180,8 @@ export function OverviewPerformanceChart({
   }, [runningRunIds]);
 
   const chartData = useMemo(
-    () => aggregateTotalEquity(equityData, runToStrategyMap),
-    [equityData, runToStrategyMap]
+    () => aggregateTotalEquity(equityData, runToStrategyMap, shareRatioMap),
+    [equityData, runToStrategyMap, shareRatioMap]
   );
 
   if (chartData.length === 0) {

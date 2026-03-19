@@ -8,6 +8,7 @@ import type { EquityCurve, CombinedTrade } from "@/lib/types/database";
 interface PerformanceStatsProps {
   filteredEquityCurve: EquityCurve[];
   filteredCombinedTrades: CombinedTrade[];
+  shareRatio?: number;
 }
 
 function formatPercent(value: number, decimals: number = 2) {
@@ -140,49 +141,48 @@ function calculateStats(equityCurve: EquityCurve[], combinedTrades: CombinedTrad
     annualizedReturn = totalReturn * (365 / periodDays);
   }
 
-  // Calculate simple returns: r_t = (E_t - E_(t-1)) / E_(t-1)
-  const simpleReturns: number[] = [];
-  for (let i = 1; i < sorted.length; i++) {
-    const prevEquity = sorted[i - 1].total_equity;
-    const currEquity = sorted[i].total_equity;
-    if (prevEquity > 0) {
-      simpleReturns.push((currEquity - prevEquity) / prevEquity);
+  // Build daily equity snapshots (last equity value per calendar day)
+  const dailyEquityMap = new Map<string, number>();
+  for (const point of sorted) {
+    const day = point.ts.slice(0, 10); // YYYY-MM-DD
+    dailyEquityMap.set(day, point.total_equity);
+  }
+  const dailyEquities = Array.from(dailyEquityMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, equity]) => equity);
+
+  // Calculate daily returns
+  const dailyReturns: number[] = [];
+  for (let i = 1; i < dailyEquities.length; i++) {
+    if (dailyEquities[i - 1] > 0) {
+      dailyReturns.push((dailyEquities[i] - dailyEquities[i - 1]) / dailyEquities[i - 1]);
     }
   }
 
-  // Calculate N (periods per year) based on actual data frequency
-  const totalHours = periodDays * 24;
-  const numIntervals = Math.max(1, sorted.length - 1);
-  const avgHoursBetweenPoints = totalHours / numIntervals;
-  const hoursPerYear = 8760; // 365 * 24
-  const N = hoursPerYear / Math.max(0.1, avgHoursBetweenPoints);
+  const N = 365; // trading days per year (crypto = 365)
+  const rf = 0.02; // annual risk-free rate
 
-  // Risk-free rate (annual)
-  const rf = 0.02;
-
-  // Calculate volatility, Sharpe, and Calmar from simple returns
   let volatility = 0;
   let sharpeRatio = 0;
   let calmarRatio = 0;
 
-  if (simpleReturns.length > 1) {
-    const meanReturn = simpleReturns.reduce((a, b) => a + b, 0) / simpleReturns.length;
-    const variance = simpleReturns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / (simpleReturns.length - 1);
+  if (dailyReturns.length > 1) {
+    const meanReturn = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+    const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / (dailyReturns.length - 1);
     const std = Math.sqrt(variance);
 
-    // Annualized return for Sharpe/Calmar: mean(r) * N (consistent scaling)
-    const annReturnForRatios = meanReturn * N * 100; // as percentage
+    // Annualized return from daily mean
+    const annReturnForRatios = meanReturn * N * 100;
 
-    // Annualized Volatility: std(r) * sqrt(N) * 100 (as percentage)
+    // Annualized Volatility
     volatility = std * Math.sqrt(N) * 100;
 
-    // Sharpe Ratio: (mean(r) - rf/N) / std(r) * sqrt(N)
+    // Sharpe Ratio: (mean_daily - rf_daily) / std_daily * sqrt(N)
     if (std > 0) {
       sharpeRatio = (meanReturn - rf / N) / std * Math.sqrt(N);
     }
 
     // Calmar Ratio: annualized_return / |MDD|
-    // Using same annualized return as Sharpe for consistency
     if (maxDrawdown > 0) {
       calmarRatio = annReturnForRatios / maxDrawdown;
     }
@@ -229,12 +229,16 @@ function calculateStats(equityCurve: EquityCurve[], combinedTrades: CombinedTrad
 export function PerformanceStats({
   filteredEquityCurve,
   filteredCombinedTrades,
+  shareRatio = 1,
 }: PerformanceStatsProps) {
   // Calculate stats based on selected time range
   const stats = useMemo(
     () => calculateStats(filteredEquityCurve, filteredCombinedTrades),
     [filteredEquityCurve, filteredCombinedTrades]
   );
+
+  // Scale dollar-amount stats by share ratio
+  const scaledTotalTurnover = stats.totalTurnover * shareRatio;
 
   return (
     <Card>
@@ -290,7 +294,7 @@ export function PerformanceStats({
         {/* Row 3: Turnover metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4">
           <StatCard
-            value={formatCurrency(stats.totalTurnover)}
+            value={formatCurrency(scaledTotalTurnover)}
             label="Total Turnover"
             colored={false}
           />

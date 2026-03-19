@@ -270,6 +270,26 @@ export type Database = {
           drawdown_pct?: number;
         };
       };
+      user_strategy_access: {
+        Row: {
+          user_id: string;
+          strategy_id: string;
+          share_ratio: number;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          strategy_id: string;
+          share_ratio?: number;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          strategy_id?: string;
+          share_ratio?: number;
+          created_at?: string;
+        };
+      };
       positions: {
         Row: {
           run_id: string;

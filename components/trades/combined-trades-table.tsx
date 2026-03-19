@@ -17,6 +17,7 @@ import type { CombinedTrade } from "@/lib/types/database";
 interface CombinedTradesTableProps {
   combinedTrades: CombinedTrade[];
   enableHedge: boolean;
+  shareRatio?: number;
 }
 
 type SortField = "ts" | "holding_period_hours" | "funding_fee_realized" | "price_pnl" | "commission_fee" | "total_pnl";
@@ -202,7 +203,7 @@ function groupIntoHedgePairs(trades: CombinedTrade[]): HedgePair[] {
   return pairs;
 }
 
-function HedgePairSummaryRow({ pair }: { pair: HedgePair }) {
+function HedgePairSummaryRow({ pair, shareRatio = 1 }: { pair: HedgePair; shareRatio?: number }) {
   return (
     <TableRow className="bg-primary/5 hover:bg-primary/10 border-t-2 border-primary/20">
       <TableCell></TableCell>
@@ -210,10 +211,10 @@ function HedgePairSummaryRow({ pair }: { pair: HedgePair }) {
         Hedge Pair Summary
       </TableCell>
       <TableCell className="text-right font-mono font-medium">
-        {formatCurrency(pair.totalNominalValue)}
+        {formatCurrency(pair.totalNominalValue * shareRatio)}
       </TableCell>
       <TableCell className="text-right font-mono">
-        {formatNumber(pair.totalQuantity, 4)}
+        {formatNumber(pair.totalQuantity * shareRatio, 4)}
       </TableCell>
       <TableCell></TableCell>
       <TableCell></TableCell>
@@ -222,19 +223,19 @@ function HedgePairSummaryRow({ pair }: { pair: HedgePair }) {
         {formatHours(pair.avgHoldingPeriod)}
       </TableCell>
       <TableCell className={cn("text-right font-mono font-medium", getPnLColor(pair.totalFunding))}>
-        {formatCurrency(pair.totalFunding)}
+        {formatCurrency(pair.totalFunding * shareRatio)}
       </TableCell>
       <TableCell className={cn("text-right font-mono text-xs font-medium", getPnLColor(pair.totalFunding))}>
         {formatFundingRate(pair.totalFunding, pair.totalNominalValue)}
       </TableCell>
       <TableCell className={cn("text-right font-mono font-medium", getPnLColor(pair.totalPricePnl))}>
-        {formatCurrency(pair.totalPricePnl)}
+        {formatCurrency(pair.totalPricePnl * shareRatio)}
       </TableCell>
       <TableCell className="text-right font-mono font-medium text-muted-foreground">
-        {formatCurrency(pair.totalCommission)}
+        {formatCurrency(pair.totalCommission * shareRatio)}
       </TableCell>
       <TableCell className={cn("text-right font-mono font-bold", getPnLColor(pair.totalPnl))}>
-        {formatCurrency(pair.totalPnl)}
+        {formatCurrency(pair.totalPnl * shareRatio)}
       </TableCell>
     </TableRow>
   );
@@ -246,12 +247,14 @@ function PositionRow({
   onToggle,
   isPartOfPair,
   isFirstInPair,
+  shareRatio = 1,
 }: {
   position: CombinedTrade;
   isExpanded: boolean;
   onToggle: () => void;
   isPartOfPair: boolean;
   isFirstInPair: boolean;
+  shareRatio?: number;
 }) {
   return (
     <TableRow
@@ -282,10 +285,10 @@ function PositionRow({
         </Badge>
       </TableCell>
       <TableCell className="text-right font-mono">
-        {formatCurrency(position.quantity * position.entry_price)}
+        {formatCurrency(position.quantity * position.entry_price * shareRatio)}
       </TableCell>
       <TableCell className="text-right font-mono">
-        {formatNumber(position.quantity, 4)}
+        {formatNumber(position.quantity * shareRatio, 4)}
       </TableCell>
       <TableCell className="text-right font-mono">
         {formatCurrency(position.entry_price)}
@@ -300,25 +303,25 @@ function PositionRow({
         {formatHours(position.holding_period_hours)}
       </TableCell>
       <TableCell className={cn("text-right font-mono", getPnLColor(position.funding_fee_realized))}>
-        {formatCurrency(position.funding_fee_realized)}
+        {formatCurrency(position.funding_fee_realized !== null ? position.funding_fee_realized * shareRatio : null)}
       </TableCell>
       <TableCell className={cn("text-right font-mono text-xs", getPnLColor(position.funding_fee_realized))}>
         {formatFundingRate(position.funding_fee_realized, position.quantity * position.entry_price)}
       </TableCell>
       <TableCell className={cn("text-right font-mono", getPnLColor(position.price_pnl))}>
-        {formatCurrency(position.price_pnl)}
+        {formatCurrency(position.price_pnl !== null ? position.price_pnl * shareRatio : null)}
       </TableCell>
       <TableCell className="text-right font-mono text-muted-foreground">
-        {formatCurrency(position.commission_fee)}
+        {formatCurrency(position.commission_fee !== null ? position.commission_fee * shareRatio : null)}
       </TableCell>
       <TableCell className={cn("text-right font-mono font-medium", getPnLColor(position.total_pnl))}>
-        {formatCurrency(position.total_pnl)}
+        {formatCurrency(position.total_pnl !== null ? position.total_pnl * shareRatio : null)}
       </TableCell>
     </TableRow>
   );
 }
 
-export function CombinedTradesTable({ combinedTrades, enableHedge }: CombinedTradesTableProps) {
+export function CombinedTradesTable({ combinedTrades, enableHedge, shareRatio = 1 }: CombinedTradesTableProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: "ts",
@@ -469,9 +472,10 @@ export function CombinedTradesTable({ combinedTrades, enableHedge }: CombinedTra
                     onToggle={() => toggleExpanded(pair.id)}
                     isPartOfPair={isActualPair}
                     isFirstInPair={index === 0}
+                    shareRatio={shareRatio}
                   />
                 ))}
-                {isExpanded && isActualPair && <HedgePairSummaryRow key={`${pair.id}-summary`} pair={pair} />}
+                {isExpanded && isActualPair && <HedgePairSummaryRow key={`${pair.id}-summary`} pair={pair} shareRatio={shareRatio} />}
               </Fragment>
             );
           })
@@ -491,10 +495,10 @@ export function CombinedTradesTable({ combinedTrades, enableHedge }: CombinedTra
                 </Badge>
               </TableCell>
               <TableCell className="text-right font-mono">
-                {formatCurrency(position.quantity * position.entry_price)}
+                {formatCurrency(position.quantity * position.entry_price * shareRatio)}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {formatNumber(position.quantity, 4)}
+                {formatNumber(position.quantity * shareRatio, 4)}
               </TableCell>
               <TableCell className="text-right font-mono">
                 {formatCurrency(position.entry_price)}
@@ -509,19 +513,19 @@ export function CombinedTradesTable({ combinedTrades, enableHedge }: CombinedTra
                 {formatHours(position.holding_period_hours)}
               </TableCell>
               <TableCell className={cn("text-right font-mono", getPnLColor(position.funding_fee_realized))}>
-                {formatCurrency(position.funding_fee_realized)}
+                {formatCurrency(position.funding_fee_realized !== null ? position.funding_fee_realized * shareRatio : null)}
               </TableCell>
               <TableCell className={cn("text-right font-mono text-xs", getPnLColor(position.funding_fee_realized))}>
                 {formatFundingRate(position.funding_fee_realized, position.quantity * position.entry_price)}
               </TableCell>
               <TableCell className={cn("text-right font-mono", getPnLColor(position.price_pnl))}>
-                {formatCurrency(position.price_pnl)}
+                {formatCurrency(position.price_pnl !== null ? position.price_pnl * shareRatio : null)}
               </TableCell>
               <TableCell className="text-right font-mono text-muted-foreground">
-                {formatCurrency(position.commission_fee)}
+                {formatCurrency(position.commission_fee !== null ? position.commission_fee * shareRatio : null)}
               </TableCell>
               <TableCell className={cn("text-right font-mono font-medium", getPnLColor(position.total_pnl))}>
-                {formatCurrency(position.total_pnl)}
+                {formatCurrency(position.total_pnl !== null ? position.total_pnl * shareRatio : null)}
               </TableCell>
             </TableRow>
           ))

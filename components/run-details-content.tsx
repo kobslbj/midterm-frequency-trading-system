@@ -43,6 +43,7 @@ interface RunDetailsContentProps {
   initialPositions: Position[];
   initialCapital: number;
   enableHedge: boolean;
+  shareRatio: number;
 }
 
 // Parallel fetch function - fetches all pages concurrently
@@ -134,19 +135,19 @@ function downsampleForDisplay<T extends { ts: string }>(data: T[]): T[] {
 }
 
 // Transform equity curve to chart data points
-function transformEquityCurveData(data: EquityCurve[]): EquityCurveDataPoint[] {
+function transformEquityCurveData(data: EquityCurve[], shareRatio: number): EquityCurveDataPoint[] {
   return data.map((point) => ({
     time: point.ts,
-    equity: point.total_equity,
+    equity: point.total_equity * shareRatio,
   }));
 }
 
 // Transform equity curve to exchange equity data points
-function transformExchangeEquityData(data: EquityCurve[]): ExchangeEquityDataPoint[] {
+function transformExchangeEquityData(data: EquityCurve[], shareRatio: number): ExchangeEquityDataPoint[] {
   return data.map((point) => ({
     time: point.ts,
-    binance: point.binance_equity,
-    bybit: point.bybit_equity,
+    binance: point.binance_equity * shareRatio,
+    bybit: point.bybit_equity * shareRatio,
   }));
 }
 
@@ -177,34 +178,34 @@ function transformExposureData(data: EquityCurve[]): ExposureDataPoint[] {
 }
 
 // Transform PnL series to breakdown data points
-function transformPnlBreakdownData(data: PnlSeries[]): PnLBreakdownDataPoint[] {
+function transformPnlBreakdownData(data: PnlSeries[], shareRatio: number): PnLBreakdownDataPoint[] {
   return data.map((point) => ({
     time: point.ts,
-    funding_pnl: point.total_funding_pnl,
-    price_pnl: point.total_price_pnl,
-    total_pnl: point.total_pnl,
-    total_fee: point.total_fee,
+    funding_pnl: point.total_funding_pnl * shareRatio,
+    price_pnl: point.total_price_pnl * shareRatio,
+    total_pnl: point.total_pnl * shareRatio,
+    total_fee: point.total_fee * shareRatio,
   }));
 }
 
 // Transform PnL series to cumulative data points
-function transformCumulativePnLData(data: PnlSeries[]): CumulativePnLDataPoint[] {
+function transformCumulativePnLData(data: PnlSeries[], shareRatio: number): CumulativePnLDataPoint[] {
   return data.map((point) => ({
     time: point.ts,
-    cumulative: point.total_pnl,
+    cumulative: point.total_pnl * shareRatio,
   }));
 }
 
 // Transform positions to realtime position data points
-function transformRealtimePositionData(data: Position[]): RealtimePositionDataPoint[] {
+function transformRealtimePositionData(data: Position[], shareRatio: number): RealtimePositionDataPoint[] {
   return data.map((pos) => ({
     symbol: pos.symbol,
     exchange: pos.exchange,
-    position: pos.position,
+    position: pos.position * shareRatio,
     avg_price: pos.avg_price,
     mark_price: pos.mark_price,
-    notional_value: pos.notional_value,
-    unrealized_pnl: pos.unrealized_pnl,
+    notional_value: pos.notional_value * shareRatio,
+    unrealized_pnl: pos.unrealized_pnl * shareRatio,
     leverage: pos.leverage,
     liq_price: pos.liq_price,
     ts: pos.ts,
@@ -219,6 +220,7 @@ export function RunDetailsContent({
   initialPositions,
   initialCapital,
   enableHedge,
+  shareRatio,
 }: RunDetailsContentProps) {
   // State for loading all historical data
   const [isLoadingAll, setIsLoadingAll] = useState(false);
@@ -292,13 +294,16 @@ export function RunDetailsContent({
   // Check if all critical data is loaded
   const isFreshDataLoaded = isEquityLoaded && isPnlLoaded && isTradesLoaded;
 
-  // Transform data for charts
-  const equityCurveData = useMemo(() => transformEquityCurveData(equityCurve), [equityCurve]);
-  const exchangeEquityData = useMemo(() => transformExchangeEquityData(equityCurve), [equityCurve]);
+  // Scale initial capital by share ratio
+  const scaledInitialCapital = initialCapital * shareRatio;
+
+  // Transform data for charts (with share ratio scaling)
+  const equityCurveData = useMemo(() => transformEquityCurveData(equityCurve, shareRatio), [equityCurve, shareRatio]);
+  const exchangeEquityData = useMemo(() => transformExchangeEquityData(equityCurve, shareRatio), [equityCurve, shareRatio]);
   const exposureData = useMemo(() => transformExposureData(equityCurve), [equityCurve]);
-  const pnlBreakdownData = useMemo(() => transformPnlBreakdownData(pnlSeries), [pnlSeries]);
-  const cumulativePnLData = useMemo(() => transformCumulativePnLData(pnlSeries), [pnlSeries]);
-  const realtimePositionData = useMemo(() => transformRealtimePositionData(positions), [positions]);
+  const pnlBreakdownData = useMemo(() => transformPnlBreakdownData(pnlSeries, shareRatio), [pnlSeries, shareRatio]);
+  const cumulativePnLData = useMemo(() => transformCumulativePnLData(pnlSeries, shareRatio), [pnlSeries, shareRatio]);
+  const realtimePositionData = useMemo(() => transformRealtimePositionData(positions, shareRatio), [positions, shareRatio]);
 
   // Calculate data time range from all time-based data
   const { dataStartTime, dataEndTime } = useMemo(() => {
@@ -461,7 +466,7 @@ export function RunDetailsContent({
         .filter((trade) => trade.total_pnl !== null)
         .map((trade, index) => ({
           trade: String(index + 1),
-          pnl: trade.total_pnl!,
+          pnl: trade.total_pnl! * shareRatio,
         }));
     }
 
@@ -497,12 +502,12 @@ export function RunDetailsContent({
         const trade2 = sorted[matchIndex];
         used.add(trade1.combined_trade_id);
         used.add(trade2.combined_trade_id);
-        const pairPnl = (trade1.total_pnl ?? 0) + (trade2.total_pnl ?? 0);
+        const pairPnl = ((trade1.total_pnl ?? 0) + (trade2.total_pnl ?? 0)) * shareRatio;
         pairPnLs.push(pairPnl);
       } else {
         used.add(trade1.combined_trade_id);
         if (trade1.total_pnl !== null) {
-          pairPnLs.push(trade1.total_pnl);
+          pairPnLs.push(trade1.total_pnl * shareRatio);
         }
       }
     }
@@ -511,7 +516,7 @@ export function RunDetailsContent({
       trade: String(index + 1),
       pnl,
     }));
-  }, [filteredCombinedTrades, enableHedge]);
+  }, [filteredCombinedTrades, enableHedge, shareRatio]);
 
   return (
     <>
@@ -525,6 +530,7 @@ export function RunDetailsContent({
         <PerformanceStats
           filteredEquityCurve={filteredEquityCurve}
           filteredCombinedTrades={filteredCombinedTrades}
+          shareRatio={shareRatio}
         />
 
         {/* Time Range Selector */}
@@ -576,6 +582,7 @@ export function RunDetailsContent({
             <CombinedTradesTable
               combinedTrades={filteredCombinedTrades}
               enableHedge={enableHedge}
+              shareRatio={shareRatio}
             />
           </div>
         </CardContent>

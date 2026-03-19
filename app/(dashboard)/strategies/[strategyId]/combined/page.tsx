@@ -191,6 +191,14 @@ export default async function CombinedStrategyPage({ params, searchParams }: Com
     return runParams?.strategy?.enable_hedge === true;
   });
 
+  // Fetch share ratio for current user
+  const { data: accessData } = await supabase
+    .from("user_strategy_access")
+    .select("share_ratio")
+    .eq("strategy_id", strategyId)
+    .single() as { data: { share_ratio: number } | null };
+  const shareRatio = accessData?.share_ratio ?? 1;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -202,7 +210,7 @@ export default async function CombinedStrategyPage({ params, searchParams }: Com
         <div>
           <h2 className="text-2xl font-bold">{(strategy as Strategy).name} - Combined View</h2>
           <p className="text-muted-foreground">
-            {runIds.length} runs combined • Initial Capital: ${totalInitialCapital.toLocaleString()}
+            {runIds.length} runs combined • Initial Capital: ${(totalInitialCapital * shareRatio).toLocaleString()}
           </p>
         </div>
       </div>
@@ -215,6 +223,7 @@ export default async function CombinedStrategyPage({ params, searchParams }: Com
         initialCapital={totalInitialCapital}
         runIds={runIds}
         enableHedge={enableHedge}
+        shareRatio={shareRatio}
       />
     </div>
   );

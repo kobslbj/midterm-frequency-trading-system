@@ -17,6 +17,7 @@ import type { StrategyRun } from "@/lib/types/database";
 interface StrategyRunsTableProps {
   runs: StrategyRun[];
   strategyId: string;
+  shareRatio?: number;
 }
 
 const modeVariants: Record<
@@ -62,6 +63,7 @@ function formatCurrency(value: number) {
 export function StrategyRunsTable({
   runs,
   strategyId,
+  shareRatio = 1,
 }: StrategyRunsTableProps) {
   if (runs.length === 0) {
     return (
@@ -110,7 +112,7 @@ export function StrategyRunsTable({
                 {run.end_time ? formatDateTime(run.end_time) : "-"}
               </TableCell>
               <TableCell className="py-2.5 text-right text-sm font-mono">
-                {formatCurrency(run.initial_capital)}
+                {formatCurrency(run.initial_capital * shareRatio)}
               </TableCell>
               <TableCell className="py-2.5 text-right">
                 <Link

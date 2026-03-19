@@ -7,6 +7,7 @@ import type { Strategy, StrategyRun } from "@/lib/types/database";
 interface RunDetailsHeaderProps {
   strategy: Strategy;
   run: StrategyRun;
+  initialCapitalOverride?: number;
 }
 
 const modeVariants: Record<StrategyRun["mode"], "default" | "secondary" | "outline"> = {
@@ -52,7 +53,7 @@ function formatDuration(startTime: string, endTime: string | null) {
   return parts.length > 0 ? parts.join(" ") : "< 1m";
 }
 
-export function RunDetailsHeader({ strategy, run }: RunDetailsHeaderProps) {
+export function RunDetailsHeader({ strategy, run, initialCapitalOverride }: RunDetailsHeaderProps) {
   return (
     <div className="flex items-start gap-3 sm:gap-4 pb-4 border-b">
       <Link href={`/strategies/${strategy.strategy_id}`}>
@@ -92,7 +93,7 @@ export function RunDetailsHeader({ strategy, run }: RunDetailsHeaderProps) {
           </div>
           <div className="flex items-center gap-1.5">
             <DollarSign className="h-3.5 w-3.5" />
-            <span className="font-mono">{formatCurrency(run.initial_capital)}</span>
+            <span className="font-mono">{formatCurrency(initialCapitalOverride ?? run.initial_capital)}</span>
           </div>
         </div>
       </div>

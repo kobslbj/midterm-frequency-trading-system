@@ -162,10 +162,12 @@ async function MetricsStrip({
   runningRunIds,
   allRuns,
   allStrategies,
+  shareRatioMap,
 }: {
   runningRunIds: string[];
   allRuns: StrategyRun[];
   allStrategies: Strategy[];
+  shareRatioMap: Record<string, number>;
 }) {
   const supabase = await createClient();
 
@@ -227,7 +229,7 @@ async function MetricsStrip({
     runningRunIds.map((rid) => runToStrategyMap[rid]).filter(Boolean)
   ).size;
 
-  // Current total equity by strategy
+  // Current total equity by strategy (scaled by share ratio)
   const lastEquityPerStrategy = new Map<
     string,
     { equity: number; ts: number }
@@ -236,10 +238,11 @@ async function MetricsStrip({
     const strategyId = runToStrategyMap[point.run_id];
     if (!strategyId) continue;
     const ts = new Date(point.ts).getTime();
+    const ratio = shareRatioMap[strategyId] ?? 1;
     const existing = lastEquityPerStrategy.get(strategyId);
     if (!existing || ts > existing.ts) {
       lastEquityPerStrategy.set(strategyId, {
-        equity: point.total_equity,
+        equity: point.total_equity * ratio,
         ts,
       });
     }
@@ -249,7 +252,7 @@ async function MetricsStrip({
     totalEquity += val.equity;
   }
 
-  // 24h-ago total equity by strategy
+  // 24h-ago total equity by strategy (scaled by share ratio)
   const equity24hPerStrategy = new Map<
     string,
     { equity: number; ts: number }
@@ -258,10 +261,11 @@ async function MetricsStrip({
     const strategyId = runToStrategyMap[point.run_id];
     if (!strategyId) continue;
     const ts = new Date(point.ts).getTime();
+    const ratio = shareRatioMap[strategyId] ?? 1;
     const existing = equity24hPerStrategy.get(strategyId);
     if (!existing || ts < existing.ts) {
       equity24hPerStrategy.set(strategyId, {
-        equity: point.total_equity,
+        equity: point.total_equity * ratio,
         ts,
       });
     }
@@ -383,9 +387,11 @@ async function MetricsStrip({
 async function PerformanceChartSection({
   runningRunIds,
   runToStrategyMap,
+  shareRatioMap,
 }: {
   runningRunIds: string[];
   runToStrategyMap: Record<string, string>;
+  shareRatioMap: Record<string, number>;
 }) {
   const supabase = await createClient();
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -400,6 +406,7 @@ async function PerformanceChartSection({
       initialEquityData={equityData}
       runningRunIds={runningRunIds}
       runToStrategyMap={runToStrategyMap}
+      shareRatioMap={shareRatioMap}
     />
   );
 }
@@ -407,6 +414,7 @@ async function PerformanceChartSection({
 // Async component for performance stats
 async function PerformanceStatsSection({
   runningRuns,
+  shareRatioMap,
 }: {
   runningRuns: {
     runId: string;
@@ -415,6 +423,7 @@ async function PerformanceStatsSection({
     mode: string;
     startTime: string;
   }[];
+  shareRatioMap: Record<string, number>;
 }) {
   if (runningRuns.length === 0) return null;
 
@@ -454,6 +463,7 @@ async function PerformanceStatsSection({
           <PerformanceStats
             filteredEquityCurve={equityByRunId[run.runId] ?? []}
             filteredCombinedTrades={tradesByRunId[run.runId] ?? []}
+            shareRatio={shareRatioMap[run.strategyId] ?? 1}
           />
         </div>
       ))}
@@ -464,13 +474,20 @@ async function PerformanceStatsSection({
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const [{ data: strategiesData }, { data: runsData }] = await Promise.all([
+  const [{ data: strategiesData }, { data: runsData }, accessResult] = await Promise.all([
     supabase.from("strategies").select("*"),
     supabase.from("strategy_runs").select("*"),
+    supabase.from("user_strategy_access").select("strategy_id, share_ratio") as unknown as Promise<{ data: { strategy_id: string; share_ratio: number }[] | null }>,
   ]);
 
   const allStrategies = (strategiesData ?? []) as Strategy[];
   const allRuns = (runsData ?? []) as StrategyRun[];
+
+  // Build share ratio map: strategy_id -> share_ratio
+  const shareRatioMap: Record<string, number> = {};
+  for (const row of accessResult.data ?? []) {
+    shareRatioMap[row.strategy_id] = row.share_ratio;
+  }
 
   const runningRunIds = allRuns
     .filter((r) => r.status === "running")
@@ -519,6 +536,7 @@ export default async function DashboardPage() {
           runningRunIds={runningRunIds}
           allRuns={allRuns}
           allStrategies={allStrategies}
+          shareRatioMap={shareRatioMap}
         />
       </Suspense>
 
@@ -537,6 +555,7 @@ export default async function DashboardPage() {
             <PerformanceChartSection
               runningRunIds={runningRunIds}
               runToStrategyMap={runToStrategyMap}
+              shareRatioMap={shareRatioMap}
             />
           </Suspense>
         </CardContent>
@@ -605,7 +624,7 @@ export default async function DashboardPage() {
             <span className="ml-2 text-muted-foreground/60">(7d)</span>
           </h3>
           <Suspense fallback={<PerformanceStatsSkeleton />}>
-            <PerformanceStatsSection runningRuns={runningRuns} />
+            <PerformanceStatsSection runningRuns={runningRuns} shareRatioMap={shareRatioMap} />
           </Suspense>
         </div>
       )}

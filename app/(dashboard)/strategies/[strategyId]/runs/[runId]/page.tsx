@@ -157,13 +157,21 @@ export default async function RunDetailsPage({ params, searchParams }: RunDetail
     return notFound();
   }
 
+  // Fetch share ratio for current user
+  const { data: accessData } = await supabase
+    .from("user_strategy_access")
+    .select("share_ratio")
+    .eq("strategy_id", strategyId)
+    .single() as { data: { share_ratio: number } | null };
+  const shareRatio = accessData?.share_ratio ?? 1;
+
   // Check if hedge is enabled from run params
   const runParams = run.params as { strategy?: { enable_hedge?: boolean } } | null;
   const enableHedge = runParams?.strategy?.enable_hedge ?? false;
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <RunDetailsHeader strategy={strategy} run={run} />
+      <RunDetailsHeader strategy={strategy} run={run} initialCapitalOverride={run.initial_capital * shareRatio} />
 
       <RunDetailsContent
         runId={runId}
@@ -173,6 +181,7 @@ export default async function RunDetailsPage({ params, searchParams }: RunDetail
         initialPositions={positions}
         initialCapital={run.initial_capital}
         enableHedge={enableHedge}
+        shareRatio={shareRatio}
       />
     </div>
   );

@@ -48,6 +48,14 @@ export default async function StrategyDetailPage({
     return notFound();
   }
 
+  // Fetch share ratio for current user
+  const { data: accessData } = await supabase
+    .from("user_strategy_access")
+    .select("share_ratio")
+    .eq("strategy_id", strategyId)
+    .single() as { data: { share_ratio: number } | null };
+  const shareRatio = accessData?.share_ratio ?? 1;
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header */}
@@ -112,8 +120,8 @@ export default async function StrategyDetailPage({
                 <span>
                   <span className="text-foreground font-mono font-medium">
                     $
-                    {runs
-                      .reduce((sum, r) => sum + (r.initial_capital || 0), 0)
+                    {(runs
+                      .reduce((sum, r) => sum + (r.initial_capital || 0), 0) * shareRatio)
                       .toLocaleString()}
                   </span>{" "}
                   capital
@@ -139,7 +147,7 @@ export default async function StrategyDetailPage({
         </CardHeader>
         <CardContent className="px-0 sm:px-6">
           <div className="overflow-x-auto">
-            <StrategyRunsTable runs={runs} strategyId={strategyId} />
+            <StrategyRunsTable runs={runs} strategyId={strategyId} shareRatio={shareRatio} />
           </div>
         </CardContent>
       </Card>
