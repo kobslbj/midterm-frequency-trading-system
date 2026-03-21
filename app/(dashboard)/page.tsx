@@ -283,7 +283,7 @@ async function MetricsStrip({
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
-        <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
+        <div className="grid grid-cols-3 gap-px bg-border">
           {/* Total Equity */}
           <div className="p-3 sm:p-4 lg:p-5 bg-card">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -299,53 +299,6 @@ async function MetricsStrip({
             <p className="text-xs text-muted-foreground mt-0.5 sm:mt-1">
               {lastEquityPerStrategy.size}{" "}
               {lastEquityPerStrategy.size === 1 ? "strategy" : "strategies"}
-            </p>
-          </div>
-
-          {/* 24h P&L */}
-          <div className="p-3 sm:p-4 lg:p-5 bg-card">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              24h P&L
-            </p>
-            <p
-              className={cn(
-                "text-lg sm:text-2xl lg:text-3xl font-bold font-mono tabular-nums mt-1",
-                hasEquityData
-                  ? pnl24h > 0
-                    ? "text-emerald-500"
-                    : pnl24h < 0
-                      ? "text-red-500"
-                      : ""
-                  : ""
-              )}
-            >
-              {hasEquityData ? (
-                <>
-                  {pnl24h >= 0 ? "+" : "-"}$
-                  {Math.abs(pnl24h).toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </>
-              ) : (
-                "--"
-              )}
-            </p>
-            <p
-              className={cn(
-                "text-xs font-mono mt-0.5 sm:mt-1",
-                hasEquityData
-                  ? pnl24h > 0
-                    ? "text-emerald-500/70"
-                    : pnl24h < 0
-                      ? "text-red-500/70"
-                      : "text-muted-foreground"
-                  : "text-muted-foreground"
-              )}
-            >
-              {hasEquityData
-                ? `${pnl24hPct >= 0 ? "+" : ""}${pnl24hPct.toFixed(2)}%`
-                : "No data"}
             </p>
           </div>
 
@@ -386,25 +339,44 @@ async function MetricsStrip({
 // Async component for performance chart
 async function PerformanceChartSection({
   runningRunIds,
+  allRuns,
   runToStrategyMap,
   shareRatioMap,
 }: {
   runningRunIds: string[];
+  allRuns: StrategyRun[];
   runToStrategyMap: Record<string, string>;
   shareRatioMap: Record<string, number>;
 }) {
   const supabase = await createClient();
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const equityData = await fetchEquityDataWithLimit(
-    supabase,
-    runningRunIds,
-    since24h
+
+  // For each strategy that has a running run, get ALL run IDs for that strategy
+  const activeStrategyIds = new Set(
+    runningRunIds.map((rid) => runToStrategyMap[rid]).filter(Boolean)
   );
+  const strategyRunIds: Record<string, string[]> = {};
+  const allActiveRunIds: string[] = [];
+  for (const strategyId of activeStrategyIds) {
+    const runIds = allRuns
+      .filter((r) => r.strategy_id === strategyId)
+      .map((r) => r.run_id);
+    strategyRunIds[strategyId] = runIds;
+    allActiveRunIds.push(...runIds);
+  }
+
+  // Fetch 7 days of equity data + combined trades for all runs of active strategies
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const [equityData, combinedTradesData] = await Promise.all([
+    fetchEquityDataWithLimit(supabase, allActiveRunIds, since7d),
+    fetchCombinedTradesWithLimit(supabase, allActiveRunIds),
+  ]);
 
   return (
     <OverviewPerformanceChart
       initialEquityData={equityData}
+      initialCombinedTrades={combinedTradesData}
       runningRunIds={runningRunIds}
+      strategyRunIds={strategyRunIds}
       runToStrategyMap={runToStrategyMap}
       shareRatioMap={shareRatioMap}
     />
@@ -543,17 +515,13 @@ export default async function DashboardPage() {
       {/* Performance Chart — Full Width */}
       <Card>
         <CardHeader className="px-3 sm:px-6 pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm sm:text-base font-medium">Equity Curve</CardTitle>
-            <span className="text-xs text-muted-foreground font-mono">
-              24H
-            </span>
-          </div>
+          <CardTitle className="text-sm sm:text-base font-medium">Equity Curve</CardTitle>
         </CardHeader>
         <CardContent className="px-1 sm:px-2">
           <Suspense fallback={<ChartSkeleton />}>
             <PerformanceChartSection
               runningRunIds={runningRunIds}
+              allRuns={allRuns}
               runToStrategyMap={runToStrategyMap}
               shareRatioMap={shareRatioMap}
             />
