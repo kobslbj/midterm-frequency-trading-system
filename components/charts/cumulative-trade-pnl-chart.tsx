@@ -1,68 +1,66 @@
-"use client"
+"use client";
 
-import { Line, LineChart, CartesianGrid, XAxis } from "recharts"
+import { Line, LineChart, CartesianGrid, XAxis } from "recharts";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart"
+} from "@/components/ui/chart";
 
-const chartData = [
-  { trade: "1", cumulative: 40.51 },
-  { trade: "2", cumulative: 40.11 },
-  { trade: "3", cumulative: 50.01 },
-  { trade: "4", cumulative: 50.32 },
-  { trade: "5", cumulative: 69.28 },
-  { trade: "6", cumulative: 61.6 },
-  { trade: "7", cumulative: 89.37 },
-]
+export interface CumulativePnLDataPoint {
+  time: string;
+  cumulative: number;
+}
+
+interface CumulativeTradePnLChartProps {
+  data: CumulativePnLDataPoint[];
+}
 
 const chartConfig = {
   cumulative: {
     label: "Cumulative PnL ($)",
     color: "hsl(var(--chart-1))",
   },
-} satisfies ChartConfig
+} satisfies ChartConfig;
 
-export function CumulativeTradePnLChart() {
-  const finalPnL = chartData[chartData.length - 1].cumulative
+export function CumulativeTradePnLChart({ data }: CumulativeTradePnLChartProps) {
+  const finalPnL = data.length > 0 ? data[data.length - 1].cumulative : 0;
 
   return (
     <Card>
       <CardHeader className="flex flex-col items-stretch border-b p-0 sm:flex-row">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
-          <CardTitle>Cumulative Trade PnL</CardTitle>
-          <CardDescription>
-            Accumulated profit/loss over time
-          </CardDescription>
+        <div className="flex flex-1 flex-col justify-center gap-1 px-4 py-3 sm:px-6 sm:py-5">
+          <CardTitle className="text-base sm:text-lg">Cumulative Trade PnL</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Accumulated profit/loss over time</CardDescription>
         </div>
         <div className="flex">
-          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-6">
-            <span className="text-xs text-muted-foreground">
-              Final PnL
-            </span>
-            <span className="text-lg font-bold leading-none sm:text-3xl text-emerald-600 dark:text-emerald-400">
+          <div className="flex flex-1 flex-col justify-center gap-1 border-t px-3 py-2 text-left sm:border-t-0 sm:border-l sm:px-8 sm:py-5">
+            <span className="text-xs text-muted-foreground">Final PnL</span>
+            <span
+              className={`text-lg font-bold leading-none sm:text-3xl ${
+                finalPnL >= 0
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-red-600 dark:text-red-400"
+              }`}
+            >
               ${finalPnL.toFixed(2)}
             </span>
           </div>
         </div>
       </CardHeader>
       <CardContent className="px-2 sm:p-6">
-        <ChartContainer
-          config={chartConfig}
-          className="aspect-auto h-[250px] w-full"
-        >
+        <ChartContainer config={chartConfig} className="aspect-auto h-[200px] sm:h-[250px] w-full">
           <LineChart
             accessibilityLayer
-            data={chartData}
+            data={data}
             margin={{
               left: 12,
               right: 12,
@@ -70,17 +68,35 @@ export function CumulativeTradePnLChart() {
           >
             <CartesianGrid vertical={false} />
             <XAxis
-              dataKey="trade"
+              dataKey="time"
               tickLine={false}
               axisLine={false}
               tickMargin={8}
+              minTickGap={32}
+              tickFormatter={(value) => {
+                const date = new Date(value);
+                return date.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                });
+              }}
             />
             <ChartTooltip
               cursor={false}
               content={
                 <ChartTooltipContent
                   className="w-[150px]"
-                  labelFormatter={(value) => `Trade #${value}`}
+                  labelFormatter={(value) => {
+                    const date = new Date(value);
+                    return date.toLocaleString("en-US", {
+                      year: "numeric",
+                      month: "numeric",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    });
+                  }}
                 />
               }
             />
@@ -95,5 +111,5 @@ export function CumulativeTradePnLChart() {
         </ChartContainer>
       </CardContent>
     </Card>
-  )
+  );
 }

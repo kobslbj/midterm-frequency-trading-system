@@ -1,0 +1,700 @@
+"use client";
+
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { TimeRangeSelector, TimeRange } from "@/components/charts/time-range-selector";
+import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
+import { PerformanceStats } from "@/components/charts/performance-stats";
+import type { EquityCurve, CombinedTrade } from "@/lib/types/database";
+
+const chartConfig = {
+  equity: {
+    label: "Total Equity",
+    color: "hsl(142 76% 36%)",
+  },
+} satisfies ChartConfig;
+
+interface OverviewPerformanceChartProps {
+  initialEquityData: EquityCurve[];
+  initialCombinedTrades: CombinedTrade[];
+  runningRunIds: string[];
+  /** All run IDs grouped by strategy: strategy_id -> run_id[] */
+  strategyRunIds: Record<string, string[]>;
+  runToStrategyMap: Record<string, string>;
+  shareRatioMap: Record<string, number>;
+}
+
+interface ChartDataPoint {
+  time: number;
+  equity: number;
+}
+
+const GAP_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Merge equity data for a single strategy's runs with gap filling.
+ * At each timestamp, dedup (latest run wins), then fill gaps with bridge points.
+ */
+function mergeStrategyEquity(data: EquityCurve[]): EquityCurve[] {
+  if (data.length === 0) return [];
+
+  const sorted = [...data].sort(
+    (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+  );
+
+  // Dedup by timestamp (latest run wins)
+  const timeMap = new Map<string, EquityCurve>();
+  for (const point of sorted) {
+    timeMap.set(point.ts, { ...point });
+  }
+
+  const deduped = Array.from(timeMap.values()).sort(
+    (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+  );
+
+  // Fill gaps with bridge points
+  const merged: EquityCurve[] = [];
+  for (let i = 0; i < deduped.length; i++) {
+    if (i > 0) {
+      const prevTime = new Date(deduped[i - 1].ts).getTime();
+      const currentTime = new Date(deduped[i].ts).getTime();
+      if (currentTime - prevTime > GAP_THRESHOLD_MS) {
+        merged.push({
+          ...deduped[i - 1],
+          ts: new Date(currentTime - 1).toISOString(),
+          run_id: "bridge",
+        });
+      }
+    }
+    merged.push(deduped[i]);
+  }
+
+  return merged;
+}
+
+/**
+ * Aggregate merged equity curves across strategies with forward-fill and share ratio scaling.
+ */
+function aggregateTotalEquity(
+  strategyData: Map<string, EquityCurve[]>,
+  shareRatioMap: Record<string, number>
+): ChartDataPoint[] {
+  if (strategyData.size === 0) return [];
+
+  // Collect all unique timestamps
+  const allTimestamps = new Set<number>();
+  for (const data of strategyData.values()) {
+    for (const point of data) {
+      allTimestamps.add(new Date(point.ts).getTime());
+    }
+  }
+
+  const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+
+  // Find latest start time across all strategies
+  let latestStartTime = 0;
+  for (const [, data] of strategyData) {
+    if (data.length > 0) {
+      const startTime = new Date(data[0].ts).getTime();
+      if (startTime > latestStartTime) latestStartTime = startTime;
+    }
+  }
+
+  // Forward-fill per strategy and sum
+  const strategyIndices = new Map<string, number>();
+  const lastValues = new Map<string, number>();
+  for (const strategyId of strategyData.keys()) {
+    strategyIndices.set(strategyId, 0);
+  }
+
+  const result: ChartDataPoint[] = [];
+
+  for (const ts of sortedTimestamps) {
+    for (const [strategyId, data] of strategyData) {
+      let idx = strategyIndices.get(strategyId) || 0;
+      const ratio = shareRatioMap[strategyId] ?? 1;
+      while (idx < data.length && new Date(data[idx].ts).getTime() <= ts) {
+        lastValues.set(strategyId, data[idx].total_equity * ratio);
+        idx++;
+      }
+      strategyIndices.set(strategyId, idx);
+    }
+
+    if (ts < latestStartTime) continue;
+
+    let total = 0;
+    for (const val of lastValues.values()) {
+      total += val;
+    }
+
+    if (lastValues.size > 0) {
+      result.push({ time: ts, equity: total });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Build a combined EquityCurve[] (summing across strategies with share ratio + forward-fill)
+ * for use with PerformanceStats.
+ */
+function buildCombinedEquityCurve(
+  strategyData: Map<string, EquityCurve[]>,
+  shareRatioMap: Record<string, number>
+): EquityCurve[] {
+  if (strategyData.size === 0) return [];
+
+  const allTimestamps = new Set<number>();
+  const tsToIso = new Map<number, string>();
+  for (const data of strategyData.values()) {
+    for (const point of data) {
+      const t = new Date(point.ts).getTime();
+      allTimestamps.add(t);
+      tsToIso.set(t, point.ts);
+    }
+  }
+
+  const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+
+  let latestStartTime = 0;
+  for (const [, data] of strategyData) {
+    if (data.length > 0) {
+      const st = new Date(data[0].ts).getTime();
+      if (st > latestStartTime) latestStartTime = st;
+    }
+  }
+
+  const strategyIndices = new Map<string, number>();
+  const lastRecords = new Map<string, EquityCurve>();
+  for (const strategyId of strategyData.keys()) {
+    strategyIndices.set(strategyId, 0);
+  }
+
+  const result: EquityCurve[] = [];
+  let peakEquity = 0;
+
+  for (const ts of sortedTimestamps) {
+    for (const [strategyId, data] of strategyData) {
+      let idx = strategyIndices.get(strategyId) || 0;
+      while (idx < data.length && new Date(data[idx].ts).getTime() <= ts) {
+        lastRecords.set(strategyId, data[idx]);
+        idx++;
+      }
+      strategyIndices.set(strategyId, idx);
+    }
+
+    if (ts < latestStartTime) continue;
+    if (lastRecords.size === 0) continue;
+
+    let totalEquity = 0;
+    let totalPnl = 0;
+    let totalPositionValue = 0;
+    let binanceEquity = 0;
+    let binancePnl = 0;
+    let binancePositionValue = 0;
+    let bybitEquity = 0;
+    let bybitPnl = 0;
+    let bybitPositionValue = 0;
+
+    for (const [strategyId, record] of lastRecords) {
+      const ratio = shareRatioMap[strategyId] ?? 1;
+      totalEquity += record.total_equity * ratio;
+      totalPnl += record.total_pnl * ratio;
+      totalPositionValue += record.total_position_value * ratio;
+      binanceEquity += record.binance_equity * ratio;
+      binancePnl += record.binance_pnl * ratio;
+      binancePositionValue += record.binance_position_value * ratio;
+      bybitEquity += record.bybit_equity * ratio;
+      bybitPnl += record.bybit_pnl * ratio;
+      bybitPositionValue += record.bybit_position_value * ratio;
+    }
+
+    peakEquity = Math.max(peakEquity, totalEquity);
+    const drawdownPct = peakEquity > 0
+      ? ((peakEquity - totalEquity) / peakEquity) * 100
+      : 0;
+
+    result.push({
+      run_id: "combined",
+      ts: tsToIso.get(ts) || new Date(ts).toISOString(),
+      total_equity: totalEquity,
+      total_pnl: totalPnl,
+      total_position_value: totalPositionValue,
+      binance_equity: binanceEquity,
+      binance_pnl: binancePnl,
+      binance_position_value: binancePositionValue,
+      bybit_equity: bybitEquity,
+      bybit_pnl: bybitPnl,
+      bybit_position_value: bybitPositionValue,
+      drawdown_pct: drawdownPct,
+    });
+  }
+
+  return result;
+}
+
+// Downsample if range > 3 days
+function downsample(data: ChartDataPoint[]): ChartDataPoint[] {
+  if (data.length < 2) return data;
+  const rangeDays = (data[data.length - 1].time - data[0].time) / (1000 * 60 * 60 * 24);
+  if (rangeDays <= 3) return data;
+  const intervalMs = 5 * 60 * 1000;
+  const result: ChartDataPoint[] = [];
+  let lastKeptTs = 0;
+  for (const point of data) {
+    if (point.time - lastKeptTs >= intervalMs || result.length === 0) {
+      result.push(point);
+      lastKeptTs = point.time;
+    }
+  }
+  if (result[result.length - 1] !== data[data.length - 1]) {
+    result.push(data[data.length - 1]);
+  }
+  return result;
+}
+
+export function OverviewPerformanceChart({
+  initialEquityData,
+  initialCombinedTrades,
+  runningRunIds,
+  strategyRunIds,
+  runToStrategyMap,
+  shareRatioMap,
+}: OverviewPerformanceChartProps) {
+  const [equityData, setEquityData] = useState<EquityCurve[]>(initialEquityData);
+  const [combinedTrades, setCombinedTrades] = useState<CombinedTrade[]>(initialCombinedTrades);
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+  const [allDataLoaded, setAllDataLoaded] = useState(false);
+
+  // Subscribe to realtime updates for running runs
+  useEffect(() => {
+    if (runningRunIds.length === 0) return;
+    const supabase = createClient();
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+
+    for (const runId of runningRunIds) {
+      const channel = supabase
+        .channel(`overview-${runId}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "equity_curve",
+            filter: `run_id=eq.${runId}`,
+          },
+          (payload) => {
+            const newRecord = payload.new as EquityCurve;
+            setEquityData((prev) => {
+              const updated = [...prev, newRecord];
+              return updated.sort(
+                (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+              );
+            });
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "combined_trades",
+            filter: `run_id=eq.${runId}`,
+          },
+          (payload) => {
+            const newRecord = payload.new as CombinedTrade;
+            setCombinedTrades((prev) => {
+              const updated = [...prev, newRecord];
+              return updated.sort(
+                (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+              );
+            });
+          }
+        )
+        .subscribe();
+      channels.push(channel);
+    }
+
+    return () => {
+      channels.forEach((channel) => supabase.removeChannel(channel));
+    };
+  }, [runningRunIds]);
+
+  // Load all historical data
+  const handleLoadAll = useCallback(async () => {
+    if (allDataLoaded || isLoadingAll) return;
+    setIsLoadingAll(true);
+
+    const supabase = createClient();
+    const allRunIds = Object.values(strategyRunIds).flat();
+    const PAGE_SIZE = 1000;
+
+    // Find earliest timestamp in current data to avoid re-fetching
+    const earliestTs = equityData.length > 0
+      ? equityData.reduce((min, p) => p.ts < min ? p.ts : min, equityData[0].ts)
+      : undefined;
+
+    const fetchRunData = async (runId: string): Promise<EquityCurve[]> => {
+      const allData: EquityCurve[] = [];
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore) {
+        let query = supabase
+          .from("equity_curve")
+          .select("*")
+          .eq("run_id", runId)
+          .order("ts", { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (earliestTs) {
+          query = query.lt("ts", earliestTs);
+        }
+        const { data } = await query;
+        if (data && data.length > 0) {
+          allData.push(...(data as EquityCurve[]));
+          offset += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
+      return allData;
+    };
+
+    // Also fetch all combined trades
+    const fetchRunTrades = async (runId: string): Promise<CombinedTrade[]> => {
+      const allData: CombinedTrade[] = [];
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data } = await supabase
+          .from("combined_trades")
+          .select("*")
+          .eq("run_id", runId)
+          .order("ts", { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (data && data.length > 0) {
+          allData.push(...(data as CombinedTrade[]));
+          offset += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
+      return allData;
+    };
+
+    const [equityResults, tradesResults] = await Promise.all([
+      Promise.all(allRunIds.map(fetchRunData)),
+      Promise.all(allRunIds.map(fetchRunTrades)),
+    ]);
+    const historicalData = equityResults.flat();
+    const allTrades = tradesResults.flat();
+
+    setEquityData((current) => {
+      const keySet = new Set(historicalData.map(d => `${d.ts}_${d.run_id}`));
+      const currentOnly = current.filter(d => !keySet.has(`${d.ts}_${d.run_id}`));
+      return [...historicalData, ...currentOnly].sort(
+        (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+      );
+    });
+
+    setCombinedTrades(allTrades.sort(
+      (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+    ));
+
+    setAllDataLoaded(true);
+    setIsLoadingAll(false);
+  }, [equityData, strategyRunIds, allDataLoaded, isLoadingAll]);
+
+  // Merge equity per strategy
+  const mergedPerStrategy = useMemo(() => {
+    const grouped = new Map<string, EquityCurve[]>();
+    for (const point of equityData) {
+      const strategyId = runToStrategyMap[point.run_id];
+      if (!strategyId) continue;
+      const arr = grouped.get(strategyId) || [];
+      arr.push(point);
+      grouped.set(strategyId, arr);
+    }
+
+    const merged = new Map<string, EquityCurve[]>();
+    for (const [strategyId, data] of grouped) {
+      merged.set(strategyId, mergeStrategyEquity(data));
+    }
+    return merged;
+  }, [equityData, runToStrategyMap]);
+
+  // Aggregate across strategies (for chart)
+  const chartData = useMemo(() => {
+    const raw = aggregateTotalEquity(mergedPerStrategy, shareRatioMap);
+    return downsample(raw);
+  }, [mergedPerStrategy, shareRatioMap]);
+
+  // Build combined EquityCurve for PerformanceStats
+  const combinedEquityCurve = useMemo(
+    () => buildCombinedEquityCurve(mergedPerStrategy, shareRatioMap),
+    [mergedPerStrategy, shareRatioMap]
+  );
+
+  // Time range
+  const { dataStartTime, dataEndTime } = useMemo(() => {
+    if (chartData.length === 0) {
+      const now = new Date();
+      return { dataStartTime: now, dataEndTime: now };
+    }
+    return {
+      dataStartTime: new Date(chartData[0].time),
+      dataEndTime: new Date(chartData[chartData.length - 1].time),
+    };
+  }, [chartData]);
+
+  const [timeRange, setTimeRange] = useState<TimeRange>({
+    start: dataStartTime,
+    end: dataEndTime,
+  });
+
+  const hasInitializedRef = useRef(false);
+  const dataStartTimestamp = dataStartTime.getTime();
+  const dataEndTimestamp = dataEndTime.getTime();
+
+  // Initial sync: default to 1w
+  useEffect(() => {
+    if (hasInitializedRef.current || chartData.length === 0) return;
+    hasInitializedRef.current = true;
+    const end = new Date(dataEndTimestamp);
+    const weekAgo = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const start = weekAgo < new Date(dataStartTimestamp) ? new Date(dataStartTimestamp) : weekAgo;
+    setTimeRange({ start, end });
+  }, [chartData.length, dataStartTimestamp, dataEndTimestamp]);
+
+  // Extend end on new data
+  useEffect(() => {
+    if (!hasInitializedRef.current) return;
+    setTimeRange((prev) => {
+      if (dataEndTimestamp > prev.end.getTime()) {
+        return { start: prev.start, end: new Date(dataEndTimestamp) };
+      }
+      return prev;
+    });
+  }, [dataEndTimestamp]);
+
+  const handleTimeRangeChange = useCallback((range: TimeRange) => {
+    setTimeRange(range);
+  }, []);
+
+  // Filter chart data by time range
+  const filteredChartData = useMemo(() => {
+    return chartData.filter((d) => {
+      return d.time >= timeRange.start.getTime() && d.time <= timeRange.end.getTime();
+    });
+  }, [chartData, timeRange]);
+
+  // Filter combined equity curve by time range (for PerformanceStats)
+  const filteredEquityCurve = useMemo(() => {
+    return combinedEquityCurve.filter((d) => {
+      const time = new Date(d.ts).getTime();
+      return time >= timeRange.start.getTime() && time <= timeRange.end.getTime();
+    });
+  }, [combinedEquityCurve, timeRange]);
+
+  // Filter combined trades by time range
+  const filteredCombinedTrades = useMemo(() => {
+    return combinedTrades.filter((d) => {
+      const time = new Date(d.ts).getTime();
+      return time >= timeRange.start.getTime() && time <= timeRange.end.getTime();
+    });
+  }, [combinedTrades, timeRange]);
+
+  // Compute P&L for selected time range
+  const rangePnl = useMemo(() => {
+    if (filteredChartData.length < 2) return { pnl: 0, pct: 0, hasData: false };
+    const startEquity = filteredChartData[0].equity;
+    const endEquity = filteredChartData[filteredChartData.length - 1].equity;
+    const pnl = endEquity - startEquity;
+    const pct = startEquity > 0 ? (pnl / startEquity) * 100 : 0;
+    return { pnl, pct, hasData: true };
+  }, [filteredChartData]);
+
+  if (chartData.length === 0) {
+    return (
+      <div className="flex h-[220px] sm:h-[300px] items-center justify-center text-sm text-muted-foreground">
+        No equity data available
+      </div>
+    );
+  }
+
+  // Y-axis domain
+  const allValues = filteredChartData.map((d) => d.equity);
+  const minValue = allValues.length > 0 ? Math.min(...allValues) : 0;
+  const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0;
+  const padding = (maxValue - minValue) * 0.1 || 10;
+  const yMin = Math.floor(minValue - padding);
+  const yMax = Math.ceil(maxValue + padding);
+
+  return (
+    <div className="space-y-3">
+      {/* Range P&L */}
+      <div className="flex items-baseline gap-3 px-1">
+        <span
+          className={cn(
+            "text-xl sm:text-2xl font-bold font-mono tabular-nums",
+            rangePnl.hasData
+              ? rangePnl.pnl > 0
+                ? "text-emerald-500"
+                : rangePnl.pnl < 0
+                  ? "text-red-500"
+                  : ""
+              : ""
+          )}
+        >
+          {rangePnl.hasData ? (
+            <>
+              {rangePnl.pnl >= 0 ? "+" : "-"}$
+              {Math.abs(rangePnl.pnl).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </>
+          ) : (
+            "--"
+          )}
+        </span>
+        <span
+          className={cn(
+            "text-sm font-mono",
+            rangePnl.hasData
+              ? rangePnl.pnl > 0
+                ? "text-emerald-500/70"
+                : rangePnl.pnl < 0
+                  ? "text-red-500/70"
+                  : "text-muted-foreground"
+              : "text-muted-foreground"
+          )}
+        >
+          {rangePnl.hasData
+            ? `${rangePnl.pct >= 0 ? "+" : ""}${rangePnl.pct.toFixed(2)}%`
+            : ""}
+        </span>
+      </div>
+
+      <TimeRangeSelector
+        dataStartTime={dataStartTime}
+        dataEndTime={dataEndTime}
+        onRangeChange={handleTimeRangeChange}
+        currentRange={timeRange}
+        onLoadAll={handleLoadAll}
+        isLoadingAll={isLoadingAll}
+        allDataLoaded={allDataLoaded}
+      />
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[220px] sm:h-[300px] w-full"
+      >
+        <AreaChart
+          accessibilityLayer
+          data={filteredChartData}
+          margin={{ left: 4, right: 4 }}
+        >
+          <defs>
+            <linearGradient id="fillEquityOverview" x1="0" y1="0" x2="0" y2="1">
+              <stop
+                offset="5%"
+                stopColor="hsl(142 76% 36%)"
+                stopOpacity={0.8}
+              />
+              <stop
+                offset="95%"
+                stopColor="hsl(142 76% 36%)"
+                stopOpacity={0.1}
+              />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} />
+          <XAxis
+            dataKey="time"
+            type="number"
+            scale="time"
+            domain={["dataMin", "dataMax"]}
+            tickLine={false}
+            axisLine={false}
+            tickMargin={6}
+            minTickGap={60}
+            tickFormatter={(value) => {
+              const date = new Date(value);
+              // Show date+time if range > 1 day
+              const rangeMs = timeRange.end.getTime() - timeRange.start.getTime();
+              if (rangeMs > 24 * 60 * 60 * 1000) {
+                return date.toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                });
+              }
+              return date.toLocaleString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              });
+            }}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tickMargin={4}
+            width={52}
+            domain={[yMin, yMax]}
+            tickFormatter={(value) => {
+              const num = Number(value);
+              if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
+              if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`;
+              return `$${num.toLocaleString()}`;
+            }}
+          />
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                className="w-[180px]"
+                labelFormatter={(_value, payload) => {
+                  const time = payload?.[0]?.payload?.time;
+                  if (!time) return "Invalid Date";
+                  const date = new Date(time);
+                  return date.toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  });
+                }}
+              />
+            }
+          />
+          <Area
+            dataKey="equity"
+            name="Total Equity"
+            type="monotone"
+            fill="url(#fillEquityOverview)"
+            stroke="hsl(142 76% 36%)"
+            strokeWidth={2}
+          />
+        </AreaChart>
+      </ChartContainer>
+
+      {/* Performance Stats based on selected time range */}
+      <PerformanceStats
+        filteredEquityCurve={filteredEquityCurve}
+        filteredCombinedTrades={filteredCombinedTrades}
+      />
+    </div>
+  );
+}
